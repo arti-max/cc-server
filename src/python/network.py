@@ -1,5 +1,8 @@
 import asyncio
 import websockets
+from websockets.http import Headers
+from websockets.typing import Subprotocol
+from websockets.server import ServerProtocol
 import logging
 from world_manager import get_compressed_world_data, set_block, set_callbacks, get_raw_world_data_from_cpp, get_spawn_pos
 from config import get_int_property, get_bool_property, get_property
@@ -125,7 +128,7 @@ async def handler(websocket):
         CLIENTS.remove(websocket)
         logging.info(f"Client {websocket.remote_address} removed. Total clients: {len(CLIENTS)}")
 
-def start_server():
+def start_server():  
     async def main():
         loop = asyncio.get_running_loop()
         set_callbacks(broadcast, loop)

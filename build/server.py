@@ -1,5 +1,8 @@
 # --- External Imports ---
 
+from websockets.http import Headers
+from websockets.server import ServerProtocol
+from websockets.typing import Subprotocol
 import asyncio
 import ctypes
 import gzip
@@ -492,7 +495,7 @@ async def handler(websocket):
         CLIENTS.remove(websocket)
         logging.info(f"Client {websocket.remote_address} removed. Total clients: {len(CLIENTS)}")
 
-def start_server():
+def start_server():  
     async def main():
         loop = asyncio.get_running_loop()
         set_callbacks(broadcast, loop)
