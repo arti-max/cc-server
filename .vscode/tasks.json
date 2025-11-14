@@ -1,0 +1,42 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build WASM",
+            "type": "shell",
+            "command": "cmd",
+            "args": [
+                "/c",
+                "C:\\dev\\emsdk\\emsdk_env.bat && emcmake cmake -B build -DCMAKE_BUILD_TYPE=Debug -G Ninja"
+            ],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Compile",
+            "type": "shell",
+            "command": "cmd",
+            "args": [
+                "/c", 
+                "C:\\dev\\emsdk\\emsdk_env.bat && cmake --build build"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "dependsOn": "Build WASM",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            }
+        }
+    ]
+}
