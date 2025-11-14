@@ -1,7 +1,8 @@
 name: Build C++ Core
 
 on: [push, pull_request] # Запускать при каждом пуше или пулл-ресте
-
+permissions:
+  contents: read
 jobs:
   build:
     # Задаем матрицу для сборки на разных системах
