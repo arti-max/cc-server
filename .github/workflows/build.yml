@@ -1,0 +1,33 @@
+name: Build C++ Core
+
+on: [push, pull_request] # Запускать при каждом пуше или пулл-ресте
+
+jobs:
+  build:
+    # Задаем матрицу для сборки на разных системах
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    # Запускаем на виртуальной машине из матрицы
+    runs-on: ${{ matrix.os }}
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Configure CMake
+      run: cmake -B ${{ github.workspace }}/build
+
+    - name: Build
+      run: cmake --build ${{ github.workspace }}/build
+
+    - name: Upload Artifacts
+      # Этот шаг "выгрузит" скомпилированные файлы, чтобы ты мог их скачать
+      uses: actions/upload-artifact@v3
+      with:
+        name: core-library-${{ matrix.os }}
+        path: |
+          ${{ github.workspace }}/build/lib/core.dll
+          ${{ github.workspace }}/build/lib/libcore.so
+          # Пути могут немного отличаться, CMake может назвать .so как libcore.so
