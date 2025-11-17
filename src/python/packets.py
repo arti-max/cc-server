@@ -73,3 +73,47 @@ def parse_request_spawn_position_packet(message):
     if message[0] == 0x24:
         return True
     return False
+
+def parse_login_packet(message):
+    try:
+        offset = 2 
+        
+        name_len = struct.unpack('!h', message[offset:offset+2])[0]
+        offset += 2
+        
+        username = message[offset:offset+name_len].decode('utf-8')
+        offset += name_len
+        
+        session_len = struct.unpack('!h', message[offset:offset+2])[0]
+        offset += 2
+        
+        session_id = message[offset:offset+session_len].decode('utf-8')
+        
+        return username, session_id
+    except (struct.error, IndexError, UnicodeDecodeError) as e:
+        logging.error(f"Failed to parse login packet: {e}")
+        return None, None
+    
+def create_chat_message_packet(message_text):
+    packet_id = 0x30
+    message_bytes = message_text.encode('utf-8')
+    if len(message_bytes) > 256: 
+        message_bytes = message_bytes[:256]
+        
+    packet_data = struct.pack('!h', len(message_bytes)) + message_bytes
+    return struct.pack('!B', packet_id) + packet_data
+
+def parse_chat_message_packet(message):
+    try:
+        offset = 1
+        msg_len = struct.unpack('!h', message[offset:offset+2])[0]
+        offset += 2
+        
+        if msg_len > 64: 
+            msg_len = 64
+            
+        message_text = message[offset:offset+msg_len].decode('utf-8')
+        return message_text
+    except Exception as e:
+        logging.error(f"Failed to parse chat message packet: {e}")
+        return None

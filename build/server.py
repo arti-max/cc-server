@@ -54,6 +54,7 @@ DEFAULT_CONFIG = {
     "port": "25565",
     "server-ip": "0.0.0.0",
     "max-players": "10",
+    "max-connections": "3",
 }
 CONFIG = {}
 
@@ -103,21 +104,46 @@ class Player:
         self.yaw, self.pitch = yaw, pitch
 
 PLAYERS = {}
+SESSIONS = {}
 next_player_id = 1
 
-def add_player(websocket, username):
+def is_username_taken(username):
+    lower_username = username.lower()
+    for player in PLAYERS.values():
+        if player.username.lower() == lower_username:
+            return True
+    return False
+
+def validate_session(username, session_id):
+    if not session_id or len(session_id) < 16:
+        return False, "Invalid session ID."
+        
+    if session_id in SESSIONS and SESSIONS[session_id].lower() != username.lower():
+        return False, "Session ID is already in use by another player."
+        
+    return True, ""
+
+def add_player(websocket, username, session_id):
     global next_player_id
     player_id = next_player_id
     next_player_id += 1
     
     new_player = Player(websocket, player_id, username)
     PLAYERS[websocket] = new_player
+    SESSIONS[session_id] = username
     logging.info(f"Player '{username}' (ID: {player_id}) added to the game.")
     return new_player
 
 def remove_player(websocket):
     if websocket in PLAYERS:
         player = PLAYERS.pop(websocket)
+        session_to_remove = None
+        for sid, uname in SESSIONS.items():
+            if uname.lower() == player.username.lower():
+                session_to_remove = sid
+                break
+        if session_to_remove:
+            del SESSIONS[session_to_remove]
         logging.info(f"Player '{player.username}' (ID: {player.id}) removed.")
         return player
     return None
@@ -205,6 +231,49 @@ def parse_request_spawn_position_packet(message):
         return True
     return False
 
+def parse_login_packet(message):
+    try:
+        offset = 2 
+        
+        name_len = struct.unpack('!h', message[offset:offset+2])[0]
+        offset += 2
+        
+        username = message[offset:offset+name_len].decode('utf-8')
+        offset += name_len
+        
+        session_len = struct.unpack('!h', message[offset:offset+2])[0]
+        offset += 2
+        
+        session_id = message[offset:offset+session_len].decode('utf-8')
+        
+        return username, session_id
+    except (struct.error, IndexError, UnicodeDecodeError) as e:
+        logging.error(f"Failed to parse login packet: {e}")
+        return None, None
+    
+def create_chat_message_packet(message_text):
+    packet_id = 0x30
+    message_bytes = message_text.encode('utf-8')
+    if len(message_bytes) > 256: 
+        message_bytes = message_bytes[:256]
+        
+    packet_data = struct.pack('!h', len(message_bytes)) + message_bytes
+    return struct.pack('!B', packet_id) + packet_data
+
+def parse_chat_message_packet(message):
+    try:
+        offset = 1
+        msg_len = struct.unpack('!h', message[offset:offset+2])[0]
+        offset += 2
+        
+        if msg_len > 64: 
+            msg_len = 64
+            
+        message_text = message[offset:offset+msg_len].decode('utf-8')
+        return message_text
+    except Exception as e:
+        logging.error(f"Failed to parse chat message packet: {e}")
+        return None
 
 # --- Content from world_manager.py ---
 
@@ -404,6 +473,17 @@ async def handler(websocket):
         logging.warning(f"Connection refused for banned IP: {ip_address}")
         await websocket.close(1000, "You are banned.")
         return
+    
+    connections_from_this_ip = 0
+    for client_ws in CLIENTS:
+        if client_ws.remote_address[0] == ip_address:
+            connections_from_this_ip += 1
+            
+    max_conn = get_int_property("max-connections")
+    if connections_from_this_ip >= max_conn:
+        logging.warning(f"Connection refused for {ip_address}: connection limit ({max_conn}) exceeded.")
+        await websocket.close(1008, f"Connection limit from your IP ({max_conn}) exceeded.")
+        return
 
     if len(CLIENTS) >= get_int_property("max-players"):
         logging.warning("Connection refused: server is full.")
@@ -418,11 +498,36 @@ async def handler(websocket):
         await websocket.send(create_server_identification_packet())
         logging.info(f"-> Sent Server ID to {websocket.remote_address}")
         
-        login_packet = await websocket.recv()
-        username = f"Player_{websocket.remote_address[1]}"
-        logging.info(f"<- Received Login packet from {websocket.remote_address}")
-
-        player = add_player(websocket, username)
+        login_message = await websocket.recv()
+        username, session_id = parse_login_packet(login_message)
+        
+        if not username or not session_id:
+            logging.warning(f"Failed to parse login packet from {websocket.remote_address}. Disconnecting.")
+            await websocket.close(1002, "Invalid login packet")
+            return
+            
+        
+        logging.info(f"<- Login attempt from '{username}' ({websocket.remote_address})")
+        
+        if is_username_taken(username):
+            logging.warning(f"Connection refused for {username}: already logged in.")
+            await websocket.close(1008, "Someone with this username is already on the server!")
+            return
+        
+        is_valid, reason = validate_session(username, session_id)
+        if not is_valid:
+            logging.warning(f"Login rejected for '{username}': {reason}")
+            await websocket.close(1008, reason)
+            return
+        
+        if is_user_banned(username):
+            logging.warning(f"Connection refused for banned: {username}")
+            await websocket.close(1000, "You are banned.")
+        
+        player = add_player(websocket, username, session_id)
+        
+        join_message = f"&e{player.username} joined the game"
+        asyncio.create_task(broadcast(create_chat_message_packet(join_message)))
         
         await websocket.send(create_login_response_packet())
         logging.info(f"-> Sent Login Response to {websocket.remote_address}")
@@ -469,7 +574,7 @@ async def handler(websocket):
                     update_packet = create_set_player_position_packet(
                         player.id, x, y, z, yaw, pitch
                     )
-                    await broadcast(update_packet, exclude_ws=websocket)
+                    asyncio.create_task(broadcast(update_packet, exclude_ws=websocket))
             elif packet_id == 0x24: # Request Spawn Position
                 logging.info(f"<- Received Spawn Position Request from {player.username}")
                 spawn_pos = get_spawn_pos()
@@ -479,6 +584,16 @@ async def handler(websocket):
                     )
                     await websocket.send(response_packet)
                     logging.info(f"-> Sent Spawn Position to {player.username}")
+                    
+            elif packet_id == 0x31:
+                chat_text = parse_chat_message_packet(message)
+                if chat_text and player:
+                    
+                    formatted_message = f"{player.username}: {chat_text}"
+                    logging.info(f"[CHAT] {formatted_message}")
+                    
+                    response_packet = create_chat_message_packet(formatted_message)
+                    asyncio.create_task(broadcast(response_packet))
 
     except websockets.exceptions.ConnectionClosed as e:
         logging.info(f"Client {websocket.remote_address} disconnected (code: {e.code})")
@@ -487,6 +602,8 @@ async def handler(websocket):
     finally:
         player = remove_player(websocket)
         if player:
+            left_message = f"&e{player.username} left the game"
+            asyncio.create_task(broadcast(create_chat_message_packet(left_message)))
             logging.info(f"Broadcasting despawn for player {player.id}")
             despawn_packet = create_despawn_player_packet(player.id)
             

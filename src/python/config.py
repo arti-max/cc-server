@@ -7,6 +7,7 @@ DEFAULT_CONFIG = {
     "port": "25565",
     "server-ip": "0.0.0.0",
     "max-players": "10",
+    "max-connections": "3",
 }
 CONFIG = {}
 

@@ -16,21 +16,46 @@ class Player:
         self.yaw, self.pitch = yaw, pitch
 
 PLAYERS = {}
+SESSIONS = {}
 next_player_id = 1
 
-def add_player(websocket, username):
+def is_username_taken(username):
+    lower_username = username.lower()
+    for player in PLAYERS.values():
+        if player.username.lower() == lower_username:
+            return True
+    return False
+
+def validate_session(username, session_id):
+    if not session_id or len(session_id) < 16:
+        return False, "Invalid session ID."
+        
+    if session_id in SESSIONS and SESSIONS[session_id].lower() != username.lower():
+        return False, "Session ID is already in use by another player."
+        
+    return True, ""
+
+def add_player(websocket, username, session_id):
     global next_player_id
     player_id = next_player_id
     next_player_id += 1
     
     new_player = Player(websocket, player_id, username)
     PLAYERS[websocket] = new_player
+    SESSIONS[session_id] = username
     logging.info(f"Player '{username}' (ID: {player_id}) added to the game.")
     return new_player
 
 def remove_player(websocket):
     if websocket in PLAYERS:
         player = PLAYERS.pop(websocket)
+        session_to_remove = None
+        for sid, uname in SESSIONS.items():
+            if uname.lower() == player.username.lower():
+                session_to_remove = sid
+                break
+        if session_to_remove:
+            del SESSIONS[session_to_remove]
         logging.info(f"Player '{player.username}' (ID: {player.id}) removed.")
         return player
     return None
