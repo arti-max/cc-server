@@ -19,6 +19,9 @@ PLAYERS = {}
 SESSIONS = {}
 next_player_id = 1
 
+def get_all_players():
+    return len(PLAYERS)
+
 def is_username_taken(username):
     lower_username = username.lower()
     for player in PLAYERS.values():
@@ -65,3 +68,10 @@ def get_player(websocket):
 
 def get_all_players():
     return list(PLAYERS.values())
+
+def find_player_by_username(username):
+    lower_username = username.lower()
+    for player in PLAYERS.values():
+        if player.username.lower() == lower_username:
+            return player
+    return None

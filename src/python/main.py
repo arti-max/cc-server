@@ -5,10 +5,13 @@ from network import start_server, broadcast
 from world_manager import init_world, tick_world_loop, save_world_periodically, shutdown_server
 from config import load_properties, get_property, get_int_property
 from ban_manager import load_bans
+from heartbeat import heartbeat_loop, send_heartbeat
+from admin_manager import load_admins
 
 if __name__ == "__main__":
     load_properties()
     load_bans()
+    load_admins()
     
     log_format = '[%(asctime)s - %(threadName)s - %(levelname)s] %(message)s'
     root_logger = logging.getLogger()
@@ -28,7 +31,9 @@ if __name__ == "__main__":
     tick_thread.start()
     save_thread = threading.Thread(target=save_world_periodically, name="WorldSaveThread", daemon=True)
     save_thread.start()
-    logging.info("C++ world tick loop started in a separate thread.")
+    heartbeat_thread = threading.Thread(target=heartbeat_loop, name="HeartbeatThread", daemon=True)
+    heartbeat_thread.start()
+    logging.info("All background threads started.")
     
     try:
         start_server()

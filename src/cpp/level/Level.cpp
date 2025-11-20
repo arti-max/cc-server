@@ -207,12 +207,12 @@ bool Level::setTile(int x, int y, int z, int type) {
         Tile::tiles[type]->onBlockAdded(this, x, y, z);
     }
     
-    neighborChanged(x - 1, y, z, oldType);
-    neighborChanged(x + 1, y, z, oldType);
-    neighborChanged(x, y - 1, z, oldType);
-    neighborChanged(x, y + 1, z, oldType);
-    neighborChanged(x, y, z - 1, oldType);
-    neighborChanged(x, y, z + 1, oldType);
+    neighborChanged(x - 1, y, z, type);
+    neighborChanged(x + 1, y, z, type);
+    neighborChanged(x, y - 1, z, type);
+    neighborChanged(x, y + 1, z, type);
+    neighborChanged(x, y, z - 1, type);
+    neighborChanged(x, y, z + 1, type);
     
     calcLightDepths(x, z, 1, 1);
     

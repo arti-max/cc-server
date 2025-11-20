@@ -8,6 +8,7 @@ from world_manager import get_compressed_world_data, set_block, set_callbacks, g
 from config import get_int_property, get_bool_property, get_property
 from ban_manager import is_user_banned, is_ip_banned
 from player_manager import add_player, remove_player, get_player, get_all_players, is_username_taken, validate_session
+from command_handler import handle_command 
 from packets import *
 import gzip
 
@@ -149,15 +150,18 @@ async def handler(websocket):
                     await websocket.send(response_packet)
                     logging.info(f"-> Sent Spawn Position to {player.username}")
                     
-            elif packet_id == 0x31:
+            elif packet_id == 0x31: # Send chat message
                 chat_text = parse_chat_message_packet(message)
                 if chat_text and player:
                     
-                    formatted_message = f"{player.username}: {chat_text}"
-                    logging.info(f"[CHAT] {formatted_message}")
-                    
-                    response_packet = create_chat_message_packet(formatted_message)
-                    asyncio.create_task(broadcast(response_packet))
+                    if chat_text.startswith('/'):
+                        await handle_command(player, chat_text, broadcast)
+                    else:
+                        formatted_message = f"{player.username}: {chat_text}"
+                        logging.info(f"[CHAT] {formatted_message}")
+                        
+                        response_packet = create_chat_message_packet(formatted_message)
+                        asyncio.create_task(broadcast(response_packet))
 
     except websockets.exceptions.ConnectionClosed as e:
         logging.info(f"Client {websocket.remote_address} disconnected (code: {e.code})")

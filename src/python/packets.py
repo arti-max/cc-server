@@ -1,7 +1,7 @@
 import struct
 from config import *
 
-PROTOCOL_VERSION = 1
+PROTOCOL_VERSION = 2
 
 
 def create_server_identification_packet():
