@@ -53,3 +53,17 @@ def add_ip_ban(ip_address):
             logging.error(f"Could not write to banned-ip.txt: {e}")
             return False
     return False
+
+def unban_user(username):
+    username_lower = username.lower()
+    if username_lower in BANNED_USERS:
+        BANNED_USERS.remove(username_lower)
+        try:
+            with open("banned.txt", "w") as f:
+                for user in BANNED_USERS:
+                    f.write(f"{user}\n")
+            logging.info(f"User '{username}' unbanned.")
+            return True
+        except IOError:
+            return False
+    return False

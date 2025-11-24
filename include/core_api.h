@@ -34,6 +34,7 @@ DLLEXPORT bool save_world_to_file(void* world_ptr, const char* filename);
 DLLEXPORT bool load_world_from_file(void* world_ptr, const char* filename);
 DLLEXPORT WorldData get_world_data(void* world_ptr);
 DLLEXPORT SpawnPosition get_spawn_position(void* world_ptr);
+DLLEXPORT void set_spawn_position(void* world_ptr, int x, int y, int z, int rot);
 
 #ifdef __cplusplus
 }

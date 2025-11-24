@@ -4,6 +4,7 @@ import platform
 import asyncio
 import gzip
 import time
+import os
 
 WORLD_DATA_COMPRESSED = None
 
@@ -57,6 +58,8 @@ core_lib.get_world_data.argtypes = [ctypes.c_void_p]
 core_lib.get_world_data.restype = WorldData
 core_lib.get_spawn_position.argtypes = [ctypes.c_void_p]
 core_lib.get_spawn_position.restype = SpawnPosition
+core_lib.set_spawn_position.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int]
+core_lib.set_spawn_position.restype = None
 
 WORLD_INSTANCE = None
 BROADCAST_FUNCTION = None
@@ -160,6 +163,7 @@ def save_world_periodically():
                 logging.error("Failed to save world.")
                 
 def shutdown_server():
+    os.remove("./externalurl.txt");
     if WORLD_INSTANCE:
         logging.info("Shutting down. Saving final world state...")
         if core_lib.save_world_to_file(WORLD_INSTANCE, b"level.dat"):
@@ -171,3 +175,10 @@ def get_spawn_pos():
     if WORLD_INSTANCE:
         return core_lib.get_spawn_position(WORLD_INSTANCE)
     return None
+
+def set_spawn_pos(x, y, z, rot):
+    if WORLD_INSTANCE:
+        core_lib.set_spawn_position(WORLD_INSTANCE, x, y, z, rot)
+        core_lib.save_world_to_file(WORLD_INSTANCE, b"level.dat") 
+        return True
+    return False

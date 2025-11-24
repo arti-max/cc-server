@@ -15,8 +15,13 @@ def create_server_identification_packet():
     
     return struct.pack('!B', packet_id) + packet_data
 
-def create_login_response_packet():
-    return struct.pack('!B', 0x10)
+def create_login_response_packet(username):
+    packet_id = 0x10
+    name_bytes = username.encode('utf-8')
+    
+    packet_data = struct.pack('!h', len(name_bytes)) + name_bytes
+    
+    return struct.pack('!B', packet_id) + packet_data
 
 def create_level_data_packet(width, height, depth, compressed_world_data):
     if not compressed_world_data:

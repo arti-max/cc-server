@@ -1,9 +1,10 @@
 import logging
 import asyncio
-from admin_manager import is_admin
+from admin_manager import is_admin, add_admin, remove_admin
 from player_manager import find_player_by_username
-from ban_manager import add_ban, add_ip_ban
-from packets import create_chat_message_packet
+from world_manager import set_spawn_pos
+from ban_manager import add_ban, add_ip_ban, unban_user
+from packets import create_chat_message_packet, create_set_spawn_position_packet
 
 async def send_private_message(player, message):
     from network import safe_send
@@ -61,10 +62,55 @@ async def handle_command(sender_player, command_str, broadcast_func):
         else:
             await send_private_message(sender_player, f"Player '{target_username}' not found to get IP from.")
 
-    # --- /broadcast <message> ---
-    elif (command == "/broadcast") and len(args) >= 1:
+    # --- /broadcast <message> or /say <message> ---
+    elif (command == "/broadcast" or command == "/say") and len(args) >= 1:
         message_to_broadcast = " ".join(args)
         await broadcast_func(create_chat_message_packet(f"&e{message_to_broadcast}"))
+        
+    elif command == "/setspawn":
+        x, y, z = int(sender_player.x), int(sender_player.y), int(sender_player.z)
+        rot = int(sender_player.yaw)
+        
+        if set_spawn_pos(x, y, z, rot):
+            spawn_packet = create_set_spawn_position_packet(x, y, z, rot)
+            await broadcast_func(spawn_packet)
+            
+            await broadcast_func(create_chat_message_packet(f"&eSpawn point updated to ({x}, {y}, {z})."))
+        else:
+            await send_private_message(sender_player, "Failed to set spawn point.")
+            
+    elif command == "/unban" and len(args) == 1:
+        target_username = args[0]
+        if unban_user(target_username):
+            await send_private_message(sender_player, f"Player '{target_username}' unbanned.")
+            await broadcast_func(create_chat_message_packet(f"&e{target_username} was unbanned."))
+        else:
+            await send_private_message(sender_player, f"Player '{target_username}' is not banned.")
+
+    # --- /op <username> ---
+    elif command == "/op" and len(args) == 1:
+        target_username = args[0]
+        if add_admin(target_username):
+            await send_private_message(sender_player, f"Player '{target_username}' is now an operator.")
+        
+            target_player = find_player_by_username(target_username)
+            if target_player:
+                await send_private_message(target_player, "You are now an operator!")
+        else:
+            await send_private_message(sender_player, f"Player '{target_username}' is already an operator.")
+
+    # --- /deop <username> ---
+    elif command == "/deop" and len(args) == 1:
+        target_username = args[0]
+        if target_username.lower() == sender_player.username.lower():
+             await send_private_message(sender_player, "You cannot de-op yourself.")
+        elif remove_admin(target_username):
+            await send_private_message(sender_player, f"Player '{target_username}' is no longer an operator.")
+            target_player = find_player_by_username(target_username)
+            if target_player:
+                await send_private_message(target_player, "You are no longer an operator.")
+        else:
+            await send_private_message(sender_player, f"Player '{target_username}' is not an operator.")
         
     else:
         await send_private_message(sender_player, "Unknown command or invalid arguments.")

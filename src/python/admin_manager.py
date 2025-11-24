@@ -14,3 +14,30 @@ def load_admins():
 
 def is_admin(username):
     return username.lower() in ADMINS
+
+def add_admin(username):
+    username_lower = username.lower()
+    if username_lower not in ADMINS:
+        ADMINS.add(username_lower)
+        try:
+            with open("admins.txt", "a") as f:
+                f.write(f"\n{username}")
+            logging.info(f"User '{username}' is now an admin.")
+            return True
+        except IOError:
+            return False
+    return False
+
+def remove_admin(username):
+    username_lower = username.lower()
+    if username_lower in ADMINS:
+        ADMINS.remove(username_lower)
+        try:
+            with open("admins.txt", "w") as f:
+                for admin in ADMINS:
+                    f.write(f"{admin}\n")
+            logging.info(f"User '{username}' is no longer an admin.")
+            return True
+        except IOError:
+            return False
+    return False

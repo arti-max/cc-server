@@ -128,4 +128,11 @@ extern "C" {
         }
         return {0, 0, 0, 0};
     }
+
+    DLLEXPORT void set_spawn_position(void* world_ptr, int x, int y, int z, int rot) {
+        WorldGeneratorWrapper* wrapper = static_cast<WorldGeneratorWrapper*>(world_ptr);
+        if (wrapper && wrapper->level) {
+            wrapper->level->setSpawnPos(x, y, z, rot);
+        }
+    }
 }

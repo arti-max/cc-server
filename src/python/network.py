@@ -7,12 +7,17 @@ import logging
 from world_manager import get_compressed_world_data, set_block, set_callbacks, get_raw_world_data_from_cpp, get_spawn_pos
 from config import get_int_property, get_bool_property, get_property
 from ban_manager import is_user_banned, is_ip_banned
-from player_manager import add_player, remove_player, get_player, get_all_players, is_username_taken, validate_session
+from player_manager import add_player, remove_player, get_player, get_all_players, is_username_taken, validate_session, validate_username
 from command_handler import handle_command 
 from packets import *
 import gzip
+import time
+import random
+import requests
 
 CLIENTS = set()
+LAST_PACKET_TIME = {} 
+PACKET_COUNTS = {}
 
 async def safe_send(client_ws, message):
     try:
@@ -57,6 +62,8 @@ async def handler(websocket):
 
     logging.info(f"Client connected from {websocket.remote_address}. Total clients: {len(CLIENTS) + 1}")
     CLIENTS.add(websocket)
+    LAST_PACKET_TIME[websocket] = time.time()
+    PACKET_COUNTS[websocket] = 0
     
     player = None
     try:
@@ -66,23 +73,47 @@ async def handler(websocket):
         login_message = await websocket.recv()
         username, session_id = parse_login_packet(login_message)
         
-        if not username or not session_id:
-            logging.warning(f"Failed to parse login packet from {websocket.remote_address}. Disconnecting.")
-            await websocket.close(1002, "Invalid login packet")
-            return
-            
+        should_verify = get_bool_property("verify-names")
         
+        if should_verify:
+            if not username or not session_id:
+                logging.warning(f"Login failed: missing username or session_id (IP: {ip_address})")
+                await websocket.close(1002, "Authentication required.")
+                return
+            
+            is_valid, reason = validate_session(username, session_id)
+            if not is_valid:
+                logging.warning(f"Login rejected for '{username}': {reason}")
+                await websocket.close(1008, reason)
+                return
+            
+            try:
+                check_url = f"http://crosscraftweb.ddns.net/checkserver.jsp?user={username}&serverId={session_id}"
+                response = requests.get(check_url, timeout=5)
+                
+                if response.text.strip() != "YES":
+                    logging.warning(f"Login failed: Invalid session for {username}")
+                    await websocket.close(1002, "Invalid session.")
+                    return
+                    
+            except requests.RequestException:
+                logging.error("Failed to contact master server for verification.")
+                await websocket.close(1002, "Authentication server unavailable.")
+                return
+
+        else:
+            if not username:
+                username = f"Player{random.randint(100, 999)}"
+                session_id = ""
+            
+            if not validate_username(username):
+                 username = f"Player{random.randint(100, 999)}"
+            
         logging.info(f"<- Login attempt from '{username}' ({websocket.remote_address})")
         
         if is_username_taken(username):
             logging.warning(f"Connection refused for {username}: already logged in.")
             await websocket.close(1008, "Someone with this username is already on the server!")
-            return
-        
-        is_valid, reason = validate_session(username, session_id)
-        if not is_valid:
-            logging.warning(f"Login rejected for '{username}': {reason}")
-            await websocket.close(1008, reason)
             return
         
         if is_user_banned(username):
@@ -94,8 +125,8 @@ async def handler(websocket):
         join_message = f"&e{player.username} joined the game"
         asyncio.create_task(broadcast(create_chat_message_packet(join_message)))
         
-        await websocket.send(create_login_response_packet())
-        logging.info(f"-> Sent Login Response to {websocket.remote_address}")
+        await websocket.send(create_login_response_packet(player.username))
+        logging.info(f"-> Sent Login Response to {websocket.remote_address} (assigned name: {player.username})")
         
         for other_player in get_all_players():
             if other_player.id != player.id:
@@ -116,6 +147,16 @@ async def handler(websocket):
         logging.info(f"-> Sent Level Data to {websocket.remote_address}")
         
         async for message in websocket:
+            current_time = time.time()
+            PACKET_COUNTS[websocket] += 1
+            if current_time - LAST_PACKET_TIME[websocket] > 1.0:
+                LAST_PACKET_TIME[websocket] = current_time
+                PACKET_COUNTS[websocket] = 0
+            
+            if PACKET_COUNTS[websocket] > 100:
+                logging.warning(f"Kicking {player.username} for spamming packets.")
+                await websocket.close(1008, "Kicked for spamming.")
+                return
             packet_id = message[0]
             logging.debug(f"<- RECV packet 0x{packet_id:02x} from {websocket.remote_address}")
             
@@ -168,6 +209,8 @@ async def handler(websocket):
     except Exception as e:
         logging.error(f"An error occurred with client {websocket.remote_address}: {e}", exc_info=True)
     finally:
+        if websocket in LAST_PACKET_TIME: del LAST_PACKET_TIME[websocket]
+        if websocket in PACKET_COUNTS: del PACKET_COUNTS[websocket]
         player = remove_player(websocket)
         if player:
             left_message = f"&e{player.username} left the game"

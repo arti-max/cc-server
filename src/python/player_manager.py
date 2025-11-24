@@ -1,4 +1,6 @@
 import logging
+import re
+import os
 
 class Player:
     def __init__(self, websocket, player_id, username):
@@ -19,6 +21,14 @@ PLAYERS = {}
 SESSIONS = {}
 next_player_id = 1
 
+def update_logged_in_file():
+    try:
+        with open("logged-in.txt", "w", encoding="utf-8") as f:
+            for player in PLAYERS.values():
+                f.write(f"{player.username}\n")
+    except IOError as e:
+        logging.error(f"Failed to update logged-in.txt: {e}")
+
 def get_all_players():
     return len(PLAYERS)
 
@@ -38,6 +48,13 @@ def validate_session(username, session_id):
         
     return True, ""
 
+def validate_username(username):
+    if len(username) < 2 or len(username) > 16:
+        return False
+    if not re.match(r"^[a-zA-Z0-9_-]+$", username):
+        return False
+    return True
+
 def add_player(websocket, username, session_id):
     global next_player_id
     player_id = next_player_id
@@ -46,6 +63,7 @@ def add_player(websocket, username, session_id):
     new_player = Player(websocket, player_id, username)
     PLAYERS[websocket] = new_player
     SESSIONS[session_id] = username
+    update_logged_in_file()
     logging.info(f"Player '{username}' (ID: {player_id}) added to the game.")
     return new_player
 
@@ -58,7 +76,8 @@ def remove_player(websocket):
                 session_to_remove = sid
                 break
         if session_to_remove:
-            del SESSIONS[session_to_remove]
+            del SESSIONS[session_to_remove]   
+        update_logged_in_file()
         logging.info(f"Player '{player.username}' (ID: {player.id}) removed.")
         return player
     return None
