@@ -4,7 +4,8 @@ from admin_manager import is_admin, add_admin, remove_admin
 from player_manager import find_player_by_username
 from world_manager import set_spawn_pos
 from ban_manager import add_ban, add_ip_ban, unban_user
-from packets import create_chat_message_packet, create_set_spawn_position_packet
+from packets import create_chat_message_packet, create_set_spawn_position_packet, create_set_player_position_packet
+from network import safe_send
 
 async def send_private_message(player, message):
     from network import safe_send
@@ -111,6 +112,52 @@ async def handle_command(sender_player, command_str, broadcast_func):
                 await send_private_message(target_player, "You are no longer an operator.")
         else:
             await send_private_message(sender_player, f"Player '{target_username}' is not an operator.")
+    # --- /tp <who> <where> or /tp <x> <y> <z>     
+    elif command == "/tp" or command == "/teleport":
+        if len(args) == 2:
+            tp_name = args[0]
+            target_name = args[1]
+            target_player = find_player_by_username(target_name)
+            tp_player = find_player_by_username(tp_name)
+            
+            if target_player:
+                sender_player.set_position(target_player.x, target_player.y, target_player.z, target_player.yaw, target_player.pitch)
+                
+                
+                teleport_packet = create_set_player_position_packet(
+                    tp_player.id, 
+                    target_player.x, target_player.y + 1.6, target_player.z,
+                    tp_player.yaw, tp_player.pitch, 1
+                )
+                
+                await safe_send(sender_player.ws, teleport_packet)
+                
+                await broadcast_func(teleport_packet, exclude_ws=sender_player.ws)
+                
+                await send_private_message(sender_player, f"{tp_player.username} teleported to {target_player.username}.")
+            else:
+                await send_private_message(sender_player, f"Player '{target_name}' not found.")
+                
+        elif len(args) == 3:
+            try:
+                x = float(args[0])
+                y = float(args[1])
+                z = float(args[2])
+                
+                sender_player.set_position(x, y, z, sender_player.yaw, sender_player.pitch)
+                
+                teleport_packet = create_set_player_position_packet(
+                    sender_player.id, x, y, z, sender_player.yaw, sender_player.pitch, 1
+                )
+                
+                await safe_send(sender_player.ws, teleport_packet)
+                await broadcast_func(teleport_packet, exclude_ws=sender_player.ws)
+                
+                await send_private_message(sender_player, f"Teleported to {x}, {y}, {z}.")
+            except ValueError:
+                await send_private_message(sender_player, "Invalid coordinates. Usage: /tp <x> <y> <z>")
+        else:
+            await send_private_message(sender_player, "Usage: /tp <player> OR /tp <x> <y> <z>")
         
     else:
         await send_private_message(sender_player, "Unknown command or invalid arguments.")

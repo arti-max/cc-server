@@ -15,11 +15,11 @@ def create_server_identification_packet():
     
     return struct.pack('!B', packet_id) + packet_data
 
-def create_login_response_packet(username):
+def create_login_response_packet(username, playerId):
     packet_id = 0x10
     name_bytes = username.encode('utf-8')
     
-    packet_data = struct.pack('!h', len(name_bytes)) + name_bytes
+    packet_data = struct.pack('!bh', playerId, len(name_bytes)) + name_bytes
     
     return struct.pack('!B', packet_id) + packet_data
 
@@ -53,9 +53,9 @@ def create_spawn_player_packet(player_id, username, x, y, z, yaw, pitch):
                   struct.pack('!fffff', x, y, z, yaw, pitch)
     return struct.pack('!B', packet_id) + packet_data
 
-def create_set_player_position_packet(player_id, x, y, z, yaw, pitch):
+def create_set_player_position_packet(player_id, x, y, z, yaw, pitch, type=0):
     packet_id = 0x21
-    packet_data = struct.pack('!bfffff', player_id, x, y, z, yaw, pitch)
+    packet_data = struct.pack('!bbfffff', player_id, type, x, y, z, yaw, pitch)
     return struct.pack('!B', packet_id) + packet_data
 
 def create_despawn_player_packet(player_id):
@@ -64,7 +64,7 @@ def create_despawn_player_packet(player_id):
 
 def parse_position_packet(message):
     try:
-        _player_id, x, y, z, yaw, pitch = struct.unpack('!bfffff', message[1:])
+        _player_id, _type, x, y, z, yaw, pitch = struct.unpack('!bbfffff', message[1:])
         return x, y, z, yaw, pitch
     except struct.error:
         return None

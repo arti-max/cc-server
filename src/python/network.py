@@ -125,7 +125,7 @@ async def handler(websocket):
         join_message = f"&e{player.username} joined the game"
         asyncio.create_task(broadcast(create_chat_message_packet(join_message)))
         
-        await websocket.send(create_login_response_packet(player.username))
+        await websocket.send(create_login_response_packet(player.username, player.id))
         logging.info(f"-> Sent Login Response to {websocket.remote_address} (assigned name: {player.username})")
         
         for other_player in get_all_players():
