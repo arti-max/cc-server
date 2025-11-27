@@ -1,6 +1,10 @@
 ## CrossCraft Public Server Alpha ##
 
-Version 1.1 (Based on Minecraft Classic Server 0.0.17a)
+Version 1.2
+
++ Added teleport command
+
+Version 1.1
 
 + Added Player List on TAB (Client-side)
 + Added /setspawn command for admins
@@ -40,6 +44,12 @@ To change any settings, edit the `server.properties` file.
 To become an administrator, add your in-game username to the `admins.txt` file (one name per line).
 
 Ingame, admins can use the following commands by typing them in chat:
+
+/tp <player1> <player2>
+   - Teleport player1 to player2.
+
+/tp <x> <y> <z>
+   - Teleport player to x, y, z.
 
 /op <username>
    - Grants admin permissions to the player. The player must be online.
