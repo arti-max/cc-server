@@ -23,7 +23,22 @@ LiquidTile::LiquidTile(int id, int liquidType) : Tile::Tile(id) {
 }
 
 bool LiquidTile::tryFlow(Level* level, int x, int y, int z) {
-    if (level->getTile(x, y, z) == 0) {
+    if (level->getTile(x, y, z) == 0 && this->liquidType == 1) {
+        for (int xx = x - 2; xx <= x + 2; xx++) {
+            for (int yy = y - 2; yy <= y + 2; yy++) {
+                for (int zz = z - 2; zz <= z + 2; zz++) {
+                   int tileId = level->getTile(xx, yy, zz);
+                   if (tileId == Tile::sponge->id) { 
+                       return false;
+                   }
+                }
+            }
+        }
+
+        if (level->setTile(x, y, z, this->tileId)) {
+            level->addToTickNextTick(x, y, z, this->tileId);
+        }
+    } else if (level->getTile(x, y, z) == 0 && this->liquidType == 2) {
         if (level->setTile(x, y, z, this->tileId)) {
             level->addToTickNextTick(x, y, z, this->tileId);
         }

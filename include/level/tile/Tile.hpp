@@ -36,6 +36,8 @@ public:
     static const Tile* goldOre;
     static const Tile* ironOre;
     static const Tile* coalOre;
+    static const Tile* sponge;
+    static const Tile* glass;
 
     int textureId;
     int id;

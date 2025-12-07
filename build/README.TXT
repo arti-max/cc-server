@@ -1,5 +1,9 @@
 ## CrossCraft Public Server Alpha ##
 
+Version 1.3
+
++ Added sponge logic
+
 Version 1.2
 
 + Added teleport command

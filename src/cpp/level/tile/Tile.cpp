@@ -5,6 +5,8 @@
 #include "level/tile/FallingTile.hpp"
 #include "level/tile/LogTile.hpp"
 #include "level/tile/TransparentTile.hpp"
+#include "level/tile/SpongeTile.hpp"
+#include "level/tile/GlassTile.hpp"
 #include "level/tile/Tile.hpp"
 
 std::array<Tile*, 256> Tile::tiles = {nullptr};
@@ -28,6 +30,8 @@ static TransparentTile leavesTile(15, 22);
 static Tile goldOreTile(16, 32);
 static Tile ironOreTile(17, 33);
 static Tile coalOreTile(18, 34);
+static SpongeTile spongeTile(19);
+static GlassTile glassTile(20);
 
 const Tile* Tile::rock = &rockTile;
 const Tile* Tile::grass = &grassTile;
@@ -47,6 +51,8 @@ const Tile* Tile::leaves = &leavesTile;
 const Tile* Tile::goldOre = &goldOreTile;
 const Tile* Tile::ironOre = &ironOreTile;
 const Tile* Tile::coalOre = &coalOreTile;
+const Tile* Tile::sponge = &spongeTile;
+const Tile* Tile::glass = &glassTile;
 
 Tile::Tile(int id) {
     tiles[id] = this;
