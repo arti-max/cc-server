@@ -22,6 +22,7 @@ private:
     Random* random;
     std::set<int> ticking;
     std::deque<TickEntry> tickNextTickList;
+    std::vector<TickEntry> bannedTiles;
     static const int maxBits = 10;
     int randValue;
     int unprocessed = 0;
@@ -81,6 +82,9 @@ public:
     int getHighestTile(int x, int z);
     void fillOcean(int x, int y, int z);
     void setBlockChangedListener(std::function<void(int, int, int, int)> listener);
+    void addBanned(int x, int y, int z, int id);
+    void removeBanned(int x, int y, int z, int id);
+    bool isBanned(int x, int y, int z);
 
 private:
     void generateMap();

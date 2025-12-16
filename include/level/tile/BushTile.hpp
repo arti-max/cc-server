@@ -4,7 +4,7 @@
 
 class Bush : public Tile {
 public:
-    Bush(int id);
+    Bush(int id, int textureId);
     ~Bush();
     void tick(Level* level, int x, int y, int z, Random* random) override;
     bool blocksLight() override;

@@ -1,7 +1,7 @@
 import struct
 from config import *
 
-PROTOCOL_VERSION = 2
+PROTOCOL_VERSION = 3
 
 
 def create_server_identification_packet():
@@ -81,7 +81,9 @@ def parse_request_spawn_position_packet(message):
 
 def parse_login_packet(message):
     try:
-        offset = 2 
+        offset = 1
+        protocol_v = struct.unpack('!b', message[offset:offset+1])[0]
+        offset += 1
         
         name_len = struct.unpack('!h', message[offset:offset+2])[0]
         offset += 2
@@ -94,7 +96,7 @@ def parse_login_packet(message):
         
         session_id = message[offset:offset+session_len].decode('utf-8')
         
-        return username, session_id
+        return username, session_id, int(protocol_v)
     except (struct.error, IndexError, UnicodeDecodeError) as e:
         logging.error(f"Failed to parse login packet: {e}")
         return None, None

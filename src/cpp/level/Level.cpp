@@ -195,13 +195,16 @@ bool Level::setTile(int x, int y, int z, int type) {
     }
 
     if (type == 0) {
+        if (this->isBanned(x, y, z)) {
+            this->removeBanned(x, y, z, type);
+        }
         if (x == 0 || z == 0 || x == width - 1 || z == height - 1) {
             if (y >= this->getGroundLevel() && y < this->getWaterLevel()) {
                 type = Tile::water->id;
             }
         }
     }
-    
+        
     int index = (y * height + z) * width + x;
     int oldType = blocks[index];
     
@@ -210,10 +213,6 @@ bool Level::setTile(int x, int y, int z, int type) {
     }
     
     blocks[index] = static_cast<uint8_t>(type);
-
-    if (blockChangedListener) {
-        blockChangedListener(x, y, z, type);
-    }
     
     if (type > 0 && Tile::tiles[type] != nullptr) {
         Tile::tiles[type]->onBlockAdded(this, x, y, z);
@@ -227,6 +226,10 @@ bool Level::setTile(int x, int y, int z, int type) {
     neighborChanged(x, y, z + 1, type);
     
     calcLightDepths(x, z, 1, 1);
+    
+    if (blockChangedListener) {
+        blockChangedListener(x, y, z, type);
+    }
     
     return true;
 }
@@ -391,4 +394,29 @@ bool Level::load(const char* filename) {
     this->initTransient();
     
     return true;
+}
+
+void Level::addBanned(int x, int y, int z, int id) {
+    this->bannedTiles.push_back({x, y, z, id});
+}
+
+void Level::removeBanned(int x, int y, int z, int id) {
+    auto it = this->bannedTiles.begin();
+    while (it != this->bannedTiles.end()) {
+        if (it->x == x && it->y == y && it->z == z && it->tileId == id) {
+            it = this->bannedTiles.erase(it);
+            return; 
+        } else {
+            ++it;
+        }
+    }
+}
+
+bool Level::isBanned(int x, int y, int z) {
+    for (TickEntry tile : this->bannedTiles) {
+        if (tile.x == x && tile.y == y && tile.z == z) {
+            return true;
+        }
+    }
+    return false;
 }

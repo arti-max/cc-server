@@ -38,6 +38,27 @@ public:
     static const Tile* coalOre;
     static const Tile* sponge;
     static const Tile* glass;
+    static const Tile* wool1;
+    static const Tile* wool2;
+    static const Tile* wool3;
+    static const Tile* wool4;
+    static const Tile* wool5;
+    static const Tile* wool6;
+    static const Tile* wool7;
+    static const Tile* wool8;
+    static const Tile* wool9;
+    static const Tile* wool10;
+    static const Tile* wool11;
+    static const Tile* wool12;
+    static const Tile* wool13;
+    static const Tile* wool14;
+    static const Tile* wool15;
+    static const Tile* wool16;
+    static const Tile* redFlower;
+    static const Tile* yellowFlower;
+    static const Tile* redMushroom;
+    static const Tile* brownMushroom;
+    static const Tile* goldBlock;
 
     int textureId;
     int id;

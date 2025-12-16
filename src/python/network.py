@@ -71,7 +71,11 @@ async def handler(websocket):
         logging.info(f"-> Sent Server ID to {websocket.remote_address}")
         
         login_message = await websocket.recv()
-        username, session_id = parse_login_packet(login_message)
+        username, session_id, protocol_v = parse_login_packet(login_message)
+        logging.info(f"[TEST PROTOCOL] {protocol_v}")
+        
+        if (protocol_v != PROTOCOL_VERSION):
+            await websocket.close(1002, f"Incompatible protocol version")
         
         should_verify = get_bool_property("verify-names")
         
