@@ -182,18 +182,6 @@ bool Level::setTile(int x, int y, int z, int type) {
         return false;
     }
 
-    if (type == Tile::water->id || type == Tile::calmWater->id) {
-        for (int xx = x - 2; xx <= x + 2; xx++) {
-            for (int yy = y - 2; yy <= y + 2; yy++) {
-                for (int zz = z - 2; zz <= z + 2; zz++) {
-                    if (this->getTile(xx, yy, zz) == 19) {
-                        return false; 
-                    }
-                }
-            }
-        }
-    }
-
     if (type == 0) {
         if (this->isBanned(x, y, z)) {
             this->removeBanned(x, y, z, type);
@@ -201,6 +189,18 @@ bool Level::setTile(int x, int y, int z, int type) {
         if (x == 0 || z == 0 || x == width - 1 || z == height - 1) {
             if (y >= this->getGroundLevel() && y < this->getWaterLevel()) {
                 type = Tile::water->id;
+            }
+        }
+    }
+
+        if (type == Tile::water->id || type == Tile::calmWater->id) {
+        for (int xx = x - 2; xx <= x + 2; xx++) {
+            for (int yy = y - 2; yy <= y + 2; yy++) {
+                for (int zz = z - 2; zz <= z + 2; zz++) {
+                    if (this->getTile(xx, yy, zz) == 19) {
+                        type = 0;
+                    }
+                }
             }
         }
     }

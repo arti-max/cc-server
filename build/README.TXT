@@ -1,5 +1,13 @@
 ## CrossCraft Public Server Alpha ##
 
+Version 1.5
+
++ Fixed block removal when placing a sponge near the level border.
+
+Version 1.4
+
++ Added more new blocks from 0.0.10a
+
 Version 1.3
 
 + Added sponge logic
