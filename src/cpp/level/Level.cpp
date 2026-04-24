@@ -1,5 +1,6 @@
 #include "level/Level.hpp"
 #include "level/tile/Tile.hpp"
+#include "Server.hpp"
 #include <iostream>
 #include <algorithm>
 #include <fstream>
@@ -193,7 +194,7 @@ bool Level::setTile(int x, int y, int z, int type) {
         }
     }
 
-        if (type == Tile::water->id || type == Tile::calmWater->id) {
+    if (type == Tile::water->id || type == Tile::calmWater->id) {
         for (int xx = x - 2; xx <= x + 2; xx++) {
             for (int yy = y - 2; yy <= y + 2; yy++) {
                 for (int zz = z - 2; zz <= z + 2; zz++) {
@@ -226,10 +227,14 @@ bool Level::setTile(int x, int y, int z, int type) {
     neighborChanged(x, y, z + 1, type);
     
     calcLightDepths(x, z, 1, 1);
-    
-    if (blockChangedListener) {
-        blockChangedListener(x, y, z, type);
+
+    if (this->server != nullptr) {
+        this->server->sendBlockUpdate(x, y, z, type);
     }
+    
+    // if (blockChangedListener) {
+    //     blockChangedListener(x, y, z, type);
+    // }
     
     return true;
 }
@@ -242,9 +247,13 @@ bool Level::setTileNoUpdate(int x, int y, int z, int type) {
         }
         blocks[index] = static_cast<uint8_t>(type);
 
-        if (blockChangedListener) {
-            blockChangedListener(x, y, z, type);
+
+        if (this->server != nullptr) {
+            this->server->sendBlockUpdate(x, y, z, type);
         }
+        // if (blockChangedListener) {
+        //     blockChangedListener(x, y, z, type);
+        // }
 
         return true;
     }

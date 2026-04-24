@@ -2,39 +2,49 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "Build WASM",
+            "label": "CMake Configure",
             "type": "shell",
-            "command": "cmd",
+            "command": "cmake",
             "args": [
-                "/c",
-                "C:\\dev\\emsdk\\emsdk_env.bat && emcmake cmake -B build -DCMAKE_BUILD_TYPE=Debug -G Ninja"
+                "-B", "build",          // Создаем файлы сборки в папке build
+                "-S", ".",              // Исходники берем из корня
+                "-DCMAKE_BUILD_TYPE=Release" // Релизная сборка (быстрее)
+                // Если хочешь отладку, поставь Debug
             ],
             "group": "build",
             "presentation": {
-                "echo": true,
                 "reveal": "always",
-                "focus": false,
                 "panel": "shared"
             },
             "problemMatcher": []
         },
         {
-            "label": "Compile",
+            "label": "Build Server",
             "type": "shell",
-            "command": "cmd",
+            "command": "cmake",
             "args": [
-                "/c", 
-                "C:\\dev\\emsdk\\emsdk_env.bat && cmake --build build"
+                "--build", "build",
+                "--config", "Release"
             ],
             "group": {
                 "kind": "build",
                 "isDefault": true
             },
-            "dependsOn": "Build WASM",
+            "dependsOn": "CMake Configure", // Сначала конфигурируем, потом билдим
             "presentation": {
-                "echo": true,
                 "reveal": "always",
-                "focus": false,
+                "panel": "shared"
+            },
+            "problemMatcher": ["$gcc"] // Или "$msCompile" если используешь MSVC
+        },
+        {
+            "label": "Run Server",
+            "type": "shell",
+            "command": "${workspaceFolder}/build/bin/CrossCraftServer.exe", // Путь к exe (если Windows)
+            // Для Linux: "${workspaceFolder}/build/bin/CrossCraftServer"
+            "group": "test",
+            "presentation": {
+                "reveal": "always",
                 "panel": "shared"
             }
         }

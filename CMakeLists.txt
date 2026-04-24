@@ -1,7 +1,57 @@
-cmake_minimum_required(VERSION 3.10)
-project(CrossCraftServerCore)
+cmake_minimum_required(VERSION 3.15)
+project(CrossCraftServer)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-add_subdirectory(src/cpp)
+include(FetchContent)
+
+set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
+set(BUILD_CURL_EXE OFF CACHE BOOL "" FORCE)
+
+if (WIN32)
+    set(CURL_USE_SCHANNEL ON CACHE BOOL "" FORCE)
+else()
+    set(CURLE_USE_OPENSSL ON CACHE BOOL "" FORCE)
+endif()
+
+FetchContent_Declare(
+    curl
+    URL
+    https://github.com/curl/curl/releases/download/curl-8_7_1/curl-8.7.1.tar.gz
+    OVERRIDE_FIND_PACKAGE
+)
+FetchContent_MakeAvailable(curl)
+
+find_package(CURL REQUIRED)
+
+# Папки заголовков
+include_directories(include)
+
+# Собираем исходники (Рекурсивно, чтобы захватить net/, level/ и т.д.)
+file(GLOB_RECURSE SOURCES 
+    "src/cpp/*.cpp"
+    "src/cpp/*.c"     # Для miniz.c, если решишь его добавить
+)
+
+
+add_executable(CrossCraftServer ${SOURCES})
+
+# --- Зависимости ---
+
+target_link_libraries(CrossCraftServer CURL::libcurl)
+
+if(WIN32)
+    target_link_libraries(CrossCraftServer ws2_32)
+else()
+    target_link_libraries(CrossCraftServer pthread)
+endif()
+
+# ZLIB (если используешь системную zlib, а не miniz.c)
+# find_package(ZLIB REQUIRED)
+# target_link_libraries(CrossCraftServer ZLIB::ZLIB)
+
+# Настройка вывода
+set_target_properties(CrossCraftServer PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+)

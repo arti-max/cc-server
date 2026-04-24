@@ -1,0 +1,3775 @@
+=== PROJECT SOURCE CODE ===
+Root: D:\!cpp_project\CC-Server
+
+
+============================================================
+FILE: build.py
+============================================================
+
+import os
+import shutil
+import subprocess
+import platform
+import re
+import base64
+
+BUILD_DIR = "build"
+SRC_DIR = "src"
+CPP_SRC_DIR = os.path.join(SRC_DIR, "cpp")
+PYTHON_SRC_DIR = os.path.join(SRC_DIR, "python")
+FINAL_SERVER_FILE = "server.py"
+
+PYTHON_FILES_ORDER = [
+    "ban_manager.py",
+    "config.py",
+    "player_manager.py",
+    "packets.py",
+    "world_manager.py",
+    "command_handler.py",
+    "admin_manager.py",
+    "network.py",
+    "heartbeat.py",
+    "main.py",
+]
+
+def build_cpp_core():
+    print("\n[--- Building C++ Core ---]")
+    cmake_build_dir = os.path.join(BUILD_DIR, "cmake_temp")
+    os.makedirs(cmake_build_dir)
+    
+    try:
+        print("Running CMake...")
+        subprocess.run(["cmake", "-S", ".", "-B", cmake_build_dir], check=True)
+        
+        print("Compiling C++ core...")
+        subprocess.run(["cmake", "--build", cmake_build_dir, "--config", "Release"], check=True)
+        
+        print("Searching for compiled library...")
+        lib_name = "core.dll" if platform.system() == "Windows" else "core.so"
+        
+        possible_paths = [
+            os.path.join(cmake_build_dir, "lib", "Release", lib_name),
+            os.path.join(cmake_build_dir, "bin", "Release", lib_name),
+            os.path.join(cmake_build_dir, "Release", lib_name),
+            os.path.join(cmake_build_dir, "lib", lib_name),
+            os.path.join(cmake_build_dir, lib_name)
+        ]
+        
+        found_path = next((path for path in possible_paths if os.path.exists(path)), None)
+            
+        if found_path:
+            print(f"✅ Found C++ core at: {found_path}")
+            shutil.copy(found_path, BUILD_DIR)
+            print(f"Copied '{lib_name}' to '{BUILD_DIR}'")
+        else:
+            raise FileNotFoundError(f"Could not find compiled library '{lib_name}' in any standard paths.")
+
+    finally:
+        shutil.rmtree(cmake_build_dir)
+
+def assemble_and_obfuscate_python_server():
+    print("\n[--- Assembling and Obfuscating Python Server ---]")
+    
+    all_code_parts = []
+    external_imports = set()
+    internal_modules = [os.path.splitext(f)[0] for f in PYTHON_FILES_ORDER]
+    
+    for fname in PYTHON_FILES_ORDER:
+        fpath = os.path.join(PYTHON_SRC_DIR, fname)
+        with open(fpath, "r", encoding="utf-8") as infile:
+            lines = infile.readlines()
+            
+            file_code = []
+            for line in lines:
+                is_internal_import = False
+                for module_name in internal_modules:
+                    if re.match(rf"from {module_name} import|import {module_name}", line.strip()):
+                        is_internal_import = True
+                        break
+                
+                if is_internal_import:
+                    continue
+                
+                if line.strip().startswith(("import ", "from ")):
+                    external_imports.add(line.strip())
+                else:
+                    file_code.append(line)
+            
+            all_code_parts.append(f"# --- Content from {fname} ---\n\n{''.join(file_code)}\n\n")
+
+    full_script_content = "# --- External Imports ---\n\n"
+    full_script_content += "\n".join(sorted(list(external_imports)))
+    full_script_content += "\n\n"
+    full_script_content += "".join(all_code_parts)
+    
+    print("Obfuscating Python code using Base64...")
+    encoded_script = base64.b64encode(full_script_content.encode('utf-8')).decode('utf-8')
+    
+    loader_stub = f"""
+# This file is auto-generated and obfuscated. Do not edit directly.
+# The actual server code is encoded below to discourage casual modification.
+import base64
+exec(base64.b64decode('{encoded_script}'))
+"""
+    
+    final_server_path = os.path.join(BUILD_DIR, FINAL_SERVER_FILE)
+    print(f"Writing obfuscated server to '{final_server_path}'...")
+    with open(final_server_path, "w", encoding="utf-8") as outfile:
+        outfile.write(loader_stub.strip())
+        
+    print("✅ Python server assembled and obfuscated successfully.")
+    
+def copy_additional_files():
+    """Копирует дополнительные файлы, такие как README.TXT."""
+    print("\n[--- Copying Additional Files ---]")
+    readme_filename = "README.TXT"
+    src_readme = readme_filename # Файл лежит в корне проекта
+    dest_readme = os.path.join(BUILD_DIR, readme_filename)
+    
+    if os.path.exists(src_readme):
+        shutil.copy(src_readme, dest_readme)
+        print(f"✅ Copied '{src_readme}' to '{dest_readme}'")
+    else:
+        print(f"⚠️ WARNING: '{src_readme}' not found. Skipping copy.")
+
+def main():
+    """Основная функция сборки проекта."""
+    print("🚀 Starting CrossCraft Server build process...")
+
+    if os.path.exists(BUILD_DIR):
+        print(f"🧹 Cleaning old build directory: {BUILD_DIR}")
+        shutil.rmtree(BUILD_DIR)
+    print(f"✨ Creating build directory: {BUILD_DIR}")
+    os.makedirs(BUILD_DIR)
+
+    try:
+        build_cpp_core()
+        assemble_and_obfuscate_python_server()
+        copy_additional_files()
+        
+        print("\n🎉 Build process completed successfully!")
+        print(f"All files are located in the '{BUILD_DIR}' directory.")
+        print(f"To run the server, navigate to '{BUILD_DIR}' and execute: python {FINAL_SERVER_FILE}")
+
+    except (subprocess.CalledProcessError, FileNotFoundError, Exception) as e:
+        print(f"❌ ERROR: Build process failed: {e}")
+
+if __name__ == "__main__":
+    main()
+
+
+============================================================
+FILE: CMakeLists.txt
+============================================================
+
+cmake_minimum_required(VERSION 3.10)
+project(CrossCraftServerCore)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+add_subdirectory(src/cpp)
+
+
+============================================================
+FILE: collect_files.py
+============================================================
+
+import os
+
+# Настройки: какие расширения файлов искать
+EXTENSIONS = {'.cpp', '.hpp', '.h', '.c', '.py', '.txt', '.md'}
+# Названия конкретных файлов, которые тоже нужно включить (даже если расширение не в списке)
+INCLUDE_FILES = {'CMakeLists.txt', 'README.txt'}
+# Папки, которые нужно игнорировать (например, скомпилированные файлы, git и т.д.)
+IGNORE_DIRS = {'.git', '__pycache__', 'build', 'cmake-build-debug', '.vscode', '.idea'}
+
+def is_source_file(filename):
+    """Проверяет, подходит ли файл по расширению или имени."""
+    if filename in INCLUDE_FILES:
+        return True
+    _, ext = os.path.splitext(filename)
+    return ext.lower() in EXTENSIONS
+
+def collect_sources(start_dir, output_file):
+    """Сканирует директорию и записывает содержимое файлов в output_file."""
+    
+    with open(output_file, 'w', encoding='utf-8') as outfile:
+        # Заголовок для итогового файла
+        outfile.write(f"=== PROJECT SOURCE CODE ===\n")
+        outfile.write(f"Root: {os.path.abspath(start_dir)}\n\n")
+
+        for root, dirs, files in os.walk(start_dir):
+            # Удаляем игнорируемые папки из списка обхода
+            dirs[:] = [d for d in dirs if d not in IGNORE_DIRS]
+
+            for file in files:
+                if is_source_file(file):
+                    file_path = os.path.join(root, file)
+                    # Относительный путь для красоты в отчете
+                    rel_path = os.path.relpath(file_path, start_dir)
+                    
+                    print(f"Adding: {rel_path}")
+                    
+                    try:
+                        with open(file_path, 'r', encoding='utf-8', errors='ignore') as infile:
+                            content = infile.read()
+                            
+                            # Разделитель и имя файла
+                            outfile.write(f"\n{'='*60}\n")
+                            outfile.write(f"FILE: {rel_path}\n")
+                            outfile.write(f"{'='*60}\n\n")
+                            
+                            outfile.write(content)
+                            outfile.write("\n") # Доп. перенос строки
+                    except Exception as e:
+                        print(f"Error reading {file_path}: {e}")
+                        outfile.write(f"\n[ERROR READING FILE: {rel_path} - {e}]\n")
+
+if __name__ == "__main__":
+    # Текущая директория как корень проекта
+    project_root = os.getcwd()
+    output_filename = "full_project_code.txt"
+    
+    print(f"Scanning project in: {project_root}")
+    collect_sources(project_root, output_filename)
+    print(f"\nDone! All code collected in: {output_filename}")
+
+
+============================================================
+FILE: full_project_code.txt
+============================================================
+
+
+
+============================================================
+FILE: README.TXT
+============================================================
+
+## CrossCraft Public Server Alpha ##
+
+Version 1.5
+
++ Fixed block removal when placing a sponge near the level border.
+
+Version 1.4
+
++ Added more new blocks from 0.0.10a
+
+Version 1.3
+
++ Added sponge logic
+
+Version 1.2
+
++ Added teleport command
+
+Version 1.1
+
++ Added Player List on TAB (Client-side)
++ Added /setspawn command for admins
++ Added /op, /deop, /unban commands for admins
++ Added server-side name verification (verify-names)
++ Added logged-in.txt to show current players
++ The server now generates externalurl.txt with the direct join link
++ Added basic anti-packet-spam protection
++ Improved configuration file handling
+
+
+## Requirements ##
+
+- Python 3.10 or newer
+- 'websockets' and 'requests' python libraries
+
+Before the first run, make sure you have the libraries installed:
+pip install websockets requests
+
+
+## How to start ##
+
+To start the server, run the following command in your terminal or command prompt:
+python3 server.py
+
+
+## Server Configuration ##
+
+To change any settings, edit the `server.properties` file.
+
+- public: Set to 'true' to list your server on crosscraftweb.ddns.net.
+- verify-names: Set to 'true' to require players to have a valid CrossCraft account. If 'false', anyone can connect, and they will be assigned a Player<NUMBER> name if they don't provide one.
+
+
+## Admin Commands ##
+
+To become an administrator, add your in-game username to the `admins.txt` file (one name per line).
+
+Ingame, admins can use the following commands by typing them in chat:
+
+/tp <player1> <player2>
+   - Teleport player1 to player2.
+
+/tp <x> <y> <z>
+   - Teleport player to x, y, z.
+
+/op <username>
+   - Grants admin permissions to the player. The player must be online.
+
+/deop <username>
+   - Revokes admin permissions from the player.
+
+/kick <username> [reason]
+   - Kicks a player from the server. A reason is optional.
+
+/ban <username>
+   - Bans and kicks a player. The ban is saved to `banned.txt`.
+
+/unban <username>
+   - Unbans a player.
+
+/banip <username>
+   - Bans a player's IP address and kicks them. The ban is saved to `banned-ip.txt` and cannot be undone ingame.
+
+/setspawn
+   - Sets the current location as the default spawn point for new players.
+
+/say <message>
+   - Broadcasts a message to the entire server as [Server].
+
+
+
+============================================================
+FILE: include\core_api.h
+============================================================
+
+#pragma once
+#include <cstddef>
+#include <cstdint>
+
+#ifdef _WIN32
+    #define DLLEXPORT __declspec(dllexport)
+#else
+    #define DLLEXPORT
+#endif
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+typedef void (*BlockChangedCallback)(int x, int y, int z, int blockType);
+
+struct WorldData {
+    uint8_t* blocks;
+    size_t size;
+};
+
+struct SpawnPosition {
+    int x, y, z, rot;
+};
+
+DLLEXPORT void* create_world_generator();
+DLLEXPORT WorldData generate_world(void* generator, int width, int height, int depth);
+DLLEXPORT void free_world_data(WorldData data);
+DLLEXPORT void destroy_world_generator(void* generator);
+DLLEXPORT void set_block_changed_callback(void* world_ptr, BlockChangedCallback callback);
+DLLEXPORT void tick_world(void* world_ptr);
+DLLEXPORT void set_block(void* world_ptr, int x, int y, int z, int blockType);
+DLLEXPORT bool save_world_to_file(void* world_ptr, const char* filename);
+DLLEXPORT bool load_world_from_file(void* world_ptr, const char* filename);
+DLLEXPORT WorldData get_world_data(void* world_ptr);
+DLLEXPORT SpawnPosition get_spawn_position(void* world_ptr);
+DLLEXPORT void set_spawn_position(void* world_ptr, int x, int y, int z, int rot);
+
+#ifdef __cplusplus
+}
+#endif
+
+
+============================================================
+FILE: include\Timer.hpp
+============================================================
+
+#pragma once
+#include <chrono>
+
+class Timer {
+private:
+    static const long long NS_PER_SECOND = 1000000000LL;
+    static const long long MAX_NS_PER_UPDATE = 1000000000LL;
+    static const int MAX_TICKS_PER_UPDATE = 100;
+    
+    float ticksPerSecond;
+    std::chrono::high_resolution_clock::time_point lastTime;
+
+public:
+    int ticks = 0;
+    float partialTicks = 0.0f;
+    float timeScale = 1.0f;
+    float fps = 0.0f;
+    float passedTime = 0.0f;
+
+    Timer(float ticksPerSecond);
+    void advanceTime();
+    
+private:
+    long long getCurrentTimeNanos();
+};
+
+
+============================================================
+FILE: include\level\Level.hpp
+============================================================
+
+#pragma once
+#include <vector>
+#include <string>
+#include <set>
+#include <deque>
+#include <cmath>
+#include <functional>
+#include "util/Random.hpp"
+
+class Entity;
+
+struct TickEntry {
+    int x, y, z, tileId;
+};
+
+class Level {
+private:
+    static const int TILE_UPDATE_INTERVAL = 200;
+    static const int multiplier = 1664525;
+    static const int addend = 1013904223;
+    
+    Random* random;
+    std::set<int> ticking;
+    std::deque<TickEntry> tickNextTickList;
+    std::vector<TickEntry> bannedTiles;
+    static const int maxBits = 10;
+    int randValue;
+    int unprocessed = 0;
+    
+    void calcLightDepths(int x0, int z0, int x1, int z1);
+    void neighborChanged(int x, int y, int z, int type);
+    bool isLiquidTile(int tileId);
+    bool isActiveLiquidTile(int tileId);
+    int encodePosition(int x, int y, int z);
+    void decodePosition(int code, int& x, int& y, int& z);
+
+    std::function<void(int, int, int, int)> blockChangedListener;
+
+public:
+    int width, height, depth;
+    int tickCount = 0;
+    std::vector<uint8_t> blocks;
+    std::vector<int> lightDepths;
+    std::vector<Entity*> entities;
+    std::string name;
+    std::string creator;
+    long long creationTime = 0;
+
+    int xSpawn;
+    int ySpawn;
+    int zSpawn;
+    int rotSpawn;
+
+    bool isRemote = false;
+
+    Level();
+    ~Level() = default;
+    void generateCaves();
+    void setData(int w, int d, int h, const std::vector<uint8_t>& blocks);
+    bool save(const char* filename);
+    bool load(const char* filename);
+    const std::vector<uint8_t>& getBlocks();
+    float getGroundLevel() const;
+    float getWaterLevel() const;
+    void tick();
+    bool isTile(int x, int y, int z);
+    bool isSolidTile(int x, int y, int z);
+    bool isLightBlocker(int x, int y, int z);
+    float getBrightness(int x, int y, int z);
+    bool isLit(int x, int y, int z);
+    int getTile(int x, int y, int z);
+    bool setTile(int x, int y, int z, int type);
+    bool setTileNoUpdate(int x, int y, int z, int type);
+    void addTick(int x, int y, int z);
+    void removeTick(int x, int y, int z);
+    bool needsTick(int tileId);
+    void addToTickNextTick(int x, int y, int z, int tileId);
+    void swap(int x1, int y1, int z1, int x2, int y2, int z2);
+    void initTransient();
+    void findSpawn();
+    void setSpawnPos(int x, int y, int z, int rot);
+    int getHighestTile(int x, int z);
+    void fillOcean(int x, int y, int z);
+    void setBlockChangedListener(std::function<void(int, int, int, int)> listener);
+    void addBanned(int x, int y, int z, int id);
+    void removeBanned(int x, int y, int z, int id);
+    bool isBanned(int x, int y, int z);
+
+private:
+    void generateMap();
+};
+
+
+============================================================
+FILE: include\level\LevelGen.hpp
+============================================================
+
+#pragma once
+
+#include "level/LevelLoaderListener.hpp"
+#include "level/Level.hpp"
+#include "level/synth/Noise.hpp"
+#include "util/Random.hpp"
+#include <vector>
+#include <cstdint>
+#include <memory>
+
+class LevelGen {
+private:
+    LevelLoaderListener* listener;
+    Random random;
+
+    int width = 0;
+    int height = 0;
+    int depth = 0;
+    std::vector<uint8_t> blocks;
+    std::vector<int> heightmap;
+
+    void raise(std::vector<int>& map);
+    void erode(std::vector<int>& map);
+    void soil(std::vector<int>& map);
+    void carve();
+    void addOres(int tileId, int count, int abundance);
+    void addWaterAndLava();
+    void addFlowersAndMushrooms(const std::vector<int>& map);
+    void addTrees(const std::vector<int>& map);
+    void growSurface(const std::vector<int>& map);
+    
+    void floodFill(int x, int y, int z, uint8_t targetBlock);
+    void addVeins(int tileId, int abundance);
+
+public:
+    explicit LevelGen(LevelLoaderListener* listener);
+    ~LevelGen();
+
+    void generateLevel(Level* level, const char* username, int w, int h, int d);
+};
+
+
+============================================================
+FILE: include\level\LevelLoaderListener.hpp
+============================================================
+
+#pragma once
+
+
+class LevelLoaderListener {
+public:
+    virtual ~LevelLoaderListener() = default;
+
+    virtual void beginLevelLoading(const char str[]) = 0;
+    virtual void levelLoadUpdate(const char str[]) = 0;
+    virtual void levelLoadProgress(int progress) = 0;
+};
+
+============================================================
+FILE: include\level\synth\CombinedNoise.hpp
+============================================================
+
+#pragma once
+
+#include "level/synth/Noise.hpp"
+#include <memory>
+#include <utility>
+
+class CombinedNoise : public Noise {
+private:
+    std::unique_ptr<Noise> noise1;
+    std::unique_ptr<Noise> noise2;
+
+public:
+    CombinedNoise(std::unique_ptr<Noise> n1, std::unique_ptr<Noise> n2)
+        : noise1(std::move(n1)), noise2(std::move(n2)) {}
+
+    double compute(double x, double y) override {
+        return noise1->compute(x + noise2->compute(x, y), y);
+    }
+};
+
+
+============================================================
+FILE: include\level\synth\ImprovedNoise.hpp
+============================================================
+
+#pragma once
+
+#include "level/synth/Noise.hpp"
+#include "util/Random.hpp"
+#include <vector>
+#include <numeric>
+#include <cmath>
+
+class ImprovedNoise : public Noise {
+private:
+    std::vector<int> p;
+
+    static double fade(double t) {
+        return t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
+    }
+
+    static double lerp(double t, double a, double b) {
+        return a + t * (b - a);
+    }
+
+    static double grad(int hash, double x, double y, double z) {
+        int h = hash & 15;
+        double u = h < 8 ? x : y;
+        double v = h < 4 ? y : (h == 12 || h == 14 ? x : z);
+        return ((h & 1) == 0 ? u : -u) + ((h & 2) == 0 ? v : -v);
+    }
+
+public:
+    explicit ImprovedNoise(Random& random) {
+        p.resize(512);
+        std::iota(p.begin(), p.begin() + 256, 0);
+
+        for (int i = 0; i < 256; ++i) {
+            int j = random.nextInt(256 - i) + i;
+            int temp = p[i];
+            p[i] = p[j];
+            p[j] = temp;
+        }
+
+        for (int i = 0; i < 256; ++i) {
+            p[i + 256] = p[i];
+        }
+    }
+
+    double compute(double x, double y) override {
+        double z = 0.0;
+
+        int floorX = static_cast<int>(std::floor(x)) & 255;
+        int floorY = static_cast<int>(std::floor(y)) & 255;
+        int floorZ = static_cast<int>(std::floor(z)) & 255;
+
+        double relX = x - std::floor(x);
+        double relY = y - std::floor(y);
+        double relZ = z - std::floor(z);
+
+        double u = fade(relX);
+        double v = fade(relY);
+        double w = fade(relZ);
+
+        int A = p[floorX] + floorY;
+        int AA = p[A] + floorZ;
+        int AB = p[A + 1] + floorZ;
+        int B = p[floorX + 1] + floorY;
+        int BA = p[B] + floorZ;
+        int BB = p[B + 1] + floorZ;
+
+        return lerp(v, lerp(u, grad(p[AA], relX, relY, relZ),
+                               grad(p[BA], relX - 1.0, relY, relZ)),
+                       lerp(u, grad(p[AB], relX, relY - 1.0, relZ),
+                               grad(p[BB], relX - 1.0, relY - 1.0, relZ)));
+    }
+};
+
+
+============================================================
+FILE: include\level\synth\Noise.hpp
+============================================================
+
+#pragma once
+
+class Noise {
+public:
+    virtual ~Noise() = default;
+    virtual double compute(double x, double y) = 0;
+};
+
+
+============================================================
+FILE: include\level\synth\OctaveNoise.hpp
+============================================================
+
+#pragma once
+
+#include "level/synth/Noise.hpp"
+#include "level/synth/ImprovedNoise.hpp"
+#include "util/Random.hpp"
+#include <vector>
+#include <memory>
+
+class OctaveNoise : public Noise {
+private:
+    std::vector<std::unique_ptr<ImprovedNoise>> noises;
+    int octaveCount;
+
+public:
+    OctaveNoise(Random& random, int octaves) : octaveCount(octaves) {
+        noises.reserve(octaveCount);
+        for (int i = 0; i < octaveCount; ++i) {
+            noises.push_back(std::make_unique<ImprovedNoise>(random));
+        }
+    }
+
+    double compute(double x, double y) override {
+        double total = 0.0;
+        double amplitude = 1.0;
+
+        for (int i = 0; i < octaveCount; ++i) {
+            total += noises[i]->compute(x / amplitude, y / amplitude) * amplitude;
+            amplitude *= 2.0;
+        }
+
+        return total;
+    }
+};
+
+
+============================================================
+FILE: include\level\tile\BushTile.hpp
+============================================================
+
+#pragma once
+#include "level/tile/Tile.hpp"
+#include <cmath>
+
+class Bush : public Tile {
+public:
+    Bush(int id, int textureId);
+    ~Bush();
+    void tick(Level* level, int x, int y, int z, Random* random) override;
+    bool blocksLight() override;
+    bool isSolid() override;
+};
+
+============================================================
+FILE: include\level\tile\CalmLiquidTile.hpp
+============================================================
+
+#pragma once
+#include "level/tile/LiquidTile.hpp"
+
+
+class CalmLiquidTile : public LiquidTile {
+public:
+    CalmLiquidTile(int id, int liquidType);
+    ~CalmLiquidTile();
+    bool isCalmLiquid() override;
+    void tick(Level* level, int x, int y, int z, Random* random) override;
+    void neighborChanged(Level* level, int x, int y, int z, int type) override;
+};
+
+============================================================
+FILE: include\level\tile\FallingTile.hpp
+============================================================
+
+#pragma once
+#include "level/tile/Tile.hpp"
+
+class FallingTile : public Tile {
+private:
+    int tileId;
+    int prevTileId = 0;
+    static void tryFall(Level* level, int x, int y, int z);
+public:
+    FallingTile(int id, int textureId);
+    ~FallingTile();
+    void onBlockAdded(Level* level, int x, int y, int z) override;
+    void neighborChanged(Level* level, int x, int y, int z, int type) override;
+};
+
+============================================================
+FILE: include\level\tile\GlassTile.hpp
+============================================================
+
+#pragma once
+#include "level/tile/TransparentTile.hpp"
+
+class GlassTile : public TransparentTile {
+public:
+    GlassTile(int id);
+    bool shouldRenderFace(Level* level, int x, int y, int z, int layer, int face) override;
+};
+
+============================================================
+FILE: include\level\tile\GrassTile.hpp
+============================================================
+
+#pragma once
+#include "level/tile/Tile.hpp"
+
+class GrassTile : public Tile {
+protected:
+    int getTexture(int face) override;
+public:
+    GrassTile(int id);
+    ~GrassTile();
+    void tick(Level* level, int x, int y, int z, Random* random) override;
+};
+
+============================================================
+FILE: include\level\tile\LiquidTile.hpp
+============================================================
+
+#pragma once
+#include "level/tile/Tile.hpp"
+
+class LiquidTile : public Tile {
+protected:
+    int liquidType;
+    int calmTileId;
+    int tileId;
+    int tickRate;
+
+    bool shouldRenderFace(Level* level, int x, int y, int z, int layer, int face) override;
+private:
+    bool tryFlow(Level* level, int x, int y, int z);
+public:
+    LiquidTile(int id, int liquidType);
+    ~LiquidTile();
+    void tick(Level* level, int x, int y, int z, Random* random) override;
+    void neighborChanged(Level* level, int x, int y, int z, int type) override;
+    bool mayPick() override;
+    bool blocksLight() override;
+    bool isSolid() override;
+    int getLiquidType() override;
+    float getBrightness(Level* level, int x, int y, int z) override;
+};
+
+============================================================
+FILE: include\level\tile\LogTile.hpp
+============================================================
+
+#pragma once
+#include "level/tile/Tile.hpp"
+
+class LogTile : public Tile {
+protected:
+    int getTexture(int face) override;
+public:
+    LogTile(int id);
+    ~LogTile();
+};
+
+============================================================
+FILE: include\level\tile\SpongeTile.hpp
+============================================================
+
+#pragma once
+#include "level/tile/Tile.hpp"
+
+class SpongeTile : public Tile {
+public:
+    SpongeTile(int id);
+    void onBlockAdded(Level* level, int x, int y, int z) override;
+    void neighborChanged(Level* level, int x, int y, int z, int type) override;
+
+private:
+    int x, y, z;
+    void checkSpongeEffect(Level* level, int x, int y, int z);
+};
+
+============================================================
+FILE: include\level\tile\Tile.hpp
+============================================================
+
+#pragma once
+#include <array>
+#include "level/Level.hpp"
+#include "util/Random.hpp"
+
+class Tile {
+
+private:
+
+protected:
+    float minX, minY, minZ, maxX, maxY, maxZ;
+    virtual void setShape(float x0, float y0, float z0, float x1, float y1, float z1);
+    virtual bool shouldRenderFace(Level* level, int x, int y, int z, int layer, int face);
+    virtual int getTexture(int face);
+public:
+    Tile(int id);
+    Tile (int id, int textureId);
+    ~Tile();
+    static std::array<Tile*, 256> tiles;
+    static const Tile* empty;
+    static const Tile* rock;
+    static const Tile* grass;
+    static const Tile* dirt;
+    static const Tile* cobblestone;
+    static const Tile* wood;
+    static const Tile* bush;
+    static const Tile* water;
+    static const Tile* unbreakable;
+    static const Tile* calmWater;
+    static const Tile* lava;
+    static const Tile* calmLava;
+    static const Tile* gravel;
+    static const Tile* sand;
+    static const Tile* log;
+    static const Tile* leaves;
+    static const Tile* goldOre;
+    static const Tile* ironOre;
+    static const Tile* coalOre;
+    static const Tile* sponge;
+    static const Tile* glass;
+    static const Tile* wool1;
+    static const Tile* wool2;
+    static const Tile* wool3;
+    static const Tile* wool4;
+    static const Tile* wool5;
+    static const Tile* wool6;
+    static const Tile* wool7;
+    static const Tile* wool8;
+    static const Tile* wool9;
+    static const Tile* wool10;
+    static const Tile* wool11;
+    static const Tile* wool12;
+    static const Tile* wool13;
+    static const Tile* wool14;
+    static const Tile* wool15;
+    static const Tile* wool16;
+    static const Tile* redFlower;
+    static const Tile* yellowFlower;
+    static const Tile* redMushroom;
+    static const Tile* brownMushroom;
+    static const Tile* goldBlock;
+
+    int textureId;
+    int id;
+
+    virtual void tick(Level* level, int x, int y, int z, Random* random);
+    virtual bool mayPick();
+    virtual bool blocksLight();
+    virtual bool isSolid();
+    virtual void neighborChanged(Level* level, int x, int y, int z, int type);
+    virtual int getLiquidType();
+    virtual bool isCalmLiquid();
+    virtual void onBlockAdded(Level* level, int x, int y, int z);
+    virtual float getBrightness(Level* level, int x, int y, int z);
+};
+
+
+============================================================
+FILE: include\level\tile\TransparentTile.hpp
+============================================================
+
+#pragma once
+#include "level/tile/Tile.hpp"
+
+class TransparentTile : public Tile {
+public:
+    TransparentTile(int id, int textureId);
+    ~TransparentTile();
+    bool isSolid() override;
+    bool blocksLight() override;
+};
+
+============================================================
+FILE: include\util\Random.hpp
+============================================================
+
+#pragma once
+#include <random>
+#include <iostream>
+#include <climits>
+
+class Random {
+private:
+    std::mt19937 generator;
+    
+public:
+    Random() : generator(std::random_device{}()) {}
+    Random(int seed) : generator(seed) {}
+    
+    int nextInt() {
+        std::uniform_int_distribution<int> dist(INT_MIN, INT_MAX);
+        return dist(generator);
+    }
+    
+    int nextInt(int max) {
+        std::uniform_int_distribution<int> dist(0, max - 1);
+        return dist(generator);
+    }
+    
+    int nextInt(int min, int max) {
+        std::uniform_int_distribution<int> dist(min, max - 1);
+        return dist(generator);
+    }
+    
+    double nextDouble() {
+        std::uniform_real_distribution<double> dist(0.0, 1.0);
+        return dist(generator);
+    }
+    
+    float nextFloat() {
+        std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+        return dist(generator);
+    }
+    
+    bool nextBool() {
+        std::uniform_int_distribution<int> dist(0, 1);
+        return dist(generator) == 1;
+    }
+    
+    static float random() {
+        static Random staticRandom;
+        return staticRandom.nextFloat();
+    }
+};
+
+
+============================================================
+FILE: src\cpp\CMakeLists.txt
+============================================================
+
+include_directories(${CMAKE_SOURCE_DIR}/include)
+
+file(GLOB_RECURSE CORE_SOURCES "*.cpp")
+
+add_library(core SHARED ${CORE_SOURCES})
+
+if (CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    target_link_libraries(core PRIVATE -static-libstdc++ -static-libgcc)
+endif()
+
+set_target_properties(core PROPERTIES
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+)
+
+install(TARGETS core DESTINATION lib)
+message(STATUS "C++ core library will be built as 'core.so' or 'core.dll'")
+
+
+============================================================
+FILE: src\cpp\core_api.cpp
+============================================================
+
+#include "core_api.h"
+#include "level/LevelGen.hpp"
+#include "level/Level.hpp"
+#include "Timer.hpp"
+
+class WorldGeneratorWrapper {
+public:
+    LevelGen* generator;
+    Level* level;
+    Timer* timer;
+    BlockChangedCallback onBlockChanged;
+    
+    WorldGeneratorWrapper() {
+        class DummyListener : public LevelLoaderListener {
+        private:
+            std::string title;
+            std::string status;
+        public:
+            void beginLevelLoading(const char* title) override {
+                this->title = title;
+            }
+            void levelLoadUpdate(const char* status) override {
+                this->status = status;
+            }
+            void levelLoadProgress(int progress) override {
+                std::cout << "[LEVELGEN] " + this->title + " : " + this->status + " " + std::to_string(progress) + "%" << std::endl;
+            }
+        };
+        
+        generator = new LevelGen(new DummyListener());
+        level = new Level();
+        timer = new Timer(20.0f);
+
+        level->setBlockChangedListener([this](int x, int y, int z, int type) {
+            if (this->onBlockChanged) {
+                this->onBlockChanged(x, y, z, type);
+            }
+        });
+    }
+    
+    ~WorldGeneratorWrapper() {
+        delete generator;
+        delete level;
+    }
+};
+
+extern "C" {
+
+    DLLEXPORT void* create_world_generator() {
+        return new WorldGeneratorWrapper();
+    }
+
+    DLLEXPORT WorldData generate_world(void* gen_ptr, int width, int height, int depth) {
+        WorldGeneratorWrapper* wrapper = static_cast<WorldGeneratorWrapper*>(gen_ptr);
+        
+        wrapper->generator->generateLevel(wrapper->level, "server", width, height, depth);
+        
+        const std::vector<uint8_t>& block_vector = wrapper->level->getBlocks();
+        size_t data_size = block_vector.size();
+        
+        uint8_t* data_copy = new uint8_t[data_size];
+        std::copy(block_vector.begin(), block_vector.end(), data_copy);
+        
+        return { data_copy, data_size };
+    }
+
+    DLLEXPORT void free_world_data(WorldData data) {
+        delete[] data.blocks;
+    }
+
+    DLLEXPORT void destroy_world_generator(void* gen_ptr) {
+        WorldGeneratorWrapper* wrapper = static_cast<WorldGeneratorWrapper*>(gen_ptr);
+        delete wrapper;
+    }
+
+    DLLEXPORT void set_block_changed_callback(void* world_ptr, BlockChangedCallback callback) {
+        WorldGeneratorWrapper* wrapper = static_cast<WorldGeneratorWrapper*>(world_ptr);
+        wrapper->onBlockChanged = callback;
+    }
+
+    DLLEXPORT void set_block(void* world_ptr, int x, int y, int z, int blockType) {
+        WorldGeneratorWrapper* wrapper = static_cast<WorldGeneratorWrapper*>(world_ptr);
+        wrapper->level->setTile(x, y, z, blockType);
+    }
+
+    DLLEXPORT void tick_world(void* world_ptr) {
+        WorldGeneratorWrapper* wrapper = static_cast<WorldGeneratorWrapper*>(world_ptr);
+        wrapper->timer->advanceTime();
+        for (int i = 0; i < wrapper->timer->ticks; ++i) {
+            wrapper->level->tick();
+        }
+    }
+
+    DLLEXPORT bool save_world_to_file(void* world_ptr, const char* filename) {
+        WorldGeneratorWrapper* wrapper = static_cast<WorldGeneratorWrapper*>(world_ptr);
+        return wrapper->level->save(filename);
+    }
+
+    DLLEXPORT bool load_world_from_file(void* world_ptr, const char* filename) {
+        WorldGeneratorWrapper* wrapper = static_cast<WorldGeneratorWrapper*>(world_ptr);
+        return wrapper->level->load(filename);
+    }
+
+    DLLEXPORT WorldData get_world_data(void* world_ptr) {
+        WorldGeneratorWrapper* wrapper = static_cast<WorldGeneratorWrapper*>(world_ptr);
+        if (!wrapper || !wrapper->level) {
+            return { nullptr, 0 };
+        }
+        
+        const std::vector<uint8_t>& block_vector = wrapper->level->getBlocks();
+        size_t data_size = block_vector.size();
+        
+        uint8_t* data_copy = new uint8_t[data_size];
+        std::copy(block_vector.begin(), block_vector.end(), data_copy);
+        
+        return { data_copy, data_size };
+    }
+
+    DLLEXPORT SpawnPosition get_spawn_position(void* world_ptr) {
+        WorldGeneratorWrapper* wrapper = static_cast<WorldGeneratorWrapper*>(world_ptr);
+        if (wrapper && wrapper->level) {
+            return {
+                wrapper->level->xSpawn,
+                wrapper->level->ySpawn,
+                wrapper->level->zSpawn,
+                wrapper->level->rotSpawn
+            };
+        }
+        return {0, 0, 0, 0};
+    }
+
+    DLLEXPORT void set_spawn_position(void* world_ptr, int x, int y, int z, int rot) {
+        WorldGeneratorWrapper* wrapper = static_cast<WorldGeneratorWrapper*>(world_ptr);
+        if (wrapper && wrapper->level) {
+            wrapper->level->setSpawnPos(x, y, z, rot);
+        }
+    }
+}
+
+
+============================================================
+FILE: src\cpp\Timer.cpp
+============================================================
+
+#include "Timer.hpp"
+#include <algorithm>
+
+Timer::Timer(float ticksPerSecond) 
+    : ticksPerSecond(ticksPerSecond) {
+    lastTime = std::chrono::high_resolution_clock::now();
+}
+
+void Timer::advanceTime() {
+    auto now = std::chrono::high_resolution_clock::now();
+    
+    auto duration = now - lastTime;
+    long long passedNs = std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count();
+    
+    lastTime = now;
+    
+    if (passedNs < 0LL) {
+        passedNs = 0LL;
+    }
+    
+    if (passedNs > MAX_NS_PER_UPDATE) {
+        passedNs = MAX_NS_PER_UPDATE;
+    }
+    
+    if (passedNs > 0) {
+        fps = static_cast<float>(NS_PER_SECOND) / static_cast<float>(passedNs);
+    } else {
+        fps = 0.0f;
+    }
+    
+    passedTime += static_cast<float>(passedNs) * timeScale * ticksPerSecond / 1.0e9f;
+    
+    ticks = static_cast<int>(passedTime);
+    
+    if (ticks > MAX_TICKS_PER_UPDATE) {
+        ticks = MAX_TICKS_PER_UPDATE;
+    }
+    
+    passedTime -= static_cast<float>(ticks);
+    partialTicks = passedTime;
+}
+
+long long Timer::getCurrentTimeNanos() {
+    auto now = std::chrono::high_resolution_clock::now();
+    auto duration = now.time_since_epoch();
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count();
+}
+
+
+============================================================
+FILE: src\cpp\level\Level.cpp
+============================================================
+
+#include "level/Level.hpp"
+#include "level/tile/Tile.hpp"
+#include <iostream>
+#include <algorithm>
+#include <fstream>
+
+Level::Level() :  random() {
+    
+    this->random = new Random();
+    randValue = random->nextInt();
+    unprocessed = 0;
+}
+
+void Level::initTransient() {
+    this->lightDepths.assign(this->width * this->height, 0);
+    this->calcLightDepths(0, 0, this->width, this->height);
+    this->tickNextTickList.clear();
+
+    if (this->xSpawn == 0 && this->ySpawn == 0 && this->zSpawn == 0) { 
+        findSpawn(); 
+    }
+}
+
+float Level::getGroundLevel() const {
+    return (float)(this->depth / 2 - 2);
+}
+
+float Level::getWaterLevel() const {
+    return (float)(this->depth / 2);
+}
+
+
+void Level::findSpawn() {
+    Random* rnd = new Random();
+    int i = 0;
+
+    int x;
+    int y;
+    int z;
+    do {
+        ++i;
+        x = rnd->nextInt(this->width / 2) + this->width / 4;
+        z = rnd->nextInt(this->height / 2) + this->height / 4;
+        y = this->getHighestTile(x, y) + 1;
+        if (i == 1000) {
+            this->xSpawn = x;
+            this->ySpawn = -100;
+            this->zSpawn = z;
+            return;
+        }
+
+    } while((float)y <= this->getGroundLevel());
+
+    this->xSpawn = x;
+    this->ySpawn = y;
+    this->zSpawn = z;
+}
+
+int Level::getHighestTile(int x, int z) {
+    int y;
+    for (y = this->depth; (this->getTile(x, y -1, z) == 0 || Tile::tiles[this->getTile(x, y-1, z)]->getLiquidType() != 0) && y > 0; --y) {
+    }
+    return y;
+}
+
+void Level::setSpawnPos(int x, int y, int z, int rot) {
+    this->xSpawn = x;
+    this->ySpawn = y;
+    this->zSpawn = z;
+    this->rotSpawn = rot;
+}
+
+void Level::setData(int w, int d, int h, const std::vector<uint8_t>& newBlocks) {
+    width = w;
+    height = h;
+    depth = d;
+    blocks = newBlocks;
+    lightDepths.resize(w * h);
+    calcLightDepths(0, 0, w, h);
+
+    this->tickNextTickList.clear();
+    this->findSpawn();
+}
+
+void Level::calcLightDepths(int x0, int z0, int x1, int z1) {
+    for (int x = x0; x < x0 + x1; ++x) {
+        for (int z = z0; z < z0 + z1; ++z) {
+            
+            int oldDepth = lightDepths[x + z * this->width];
+            
+            int depth = this->depth - 1;
+            while (depth > 0 && !this->isLightBlocker(x, depth, z)) {
+                --depth;
+            }
+            
+            lightDepths[x + z * width] = depth + 1;
+            
+            if (oldDepth != depth) {
+                int yl0 = oldDepth < depth ? oldDepth : depth;
+                int yl1 = oldDepth > depth ? oldDepth : depth;
+            }
+        }
+    }
+}
+
+void Level::tick() {
+    tickCount++;
+
+    if (tickCount % 5 == 0) {
+        int count = tickNextTickList.size();
+        if (count > 1000) count = 1000;
+
+        for (int i = 0; i < count; ++i) {
+            TickEntry entry = tickNextTickList.front();
+            tickNextTickList.pop_front();
+
+            if (getTile(entry.x, entry.y, entry.z) == entry.tileId) {
+                Tile::tiles[entry.tileId]->tick(this, entry.x, entry.y, entry.z, random);
+            }
+        }
+    }
+
+
+    unprocessed += width * height * depth;
+    int ticks = unprocessed / TILE_UPDATE_INTERVAL;
+    unprocessed -= ticks * TILE_UPDATE_INTERVAL;
+    
+    for (int i = 0; i < ticks; ++i) {
+        int x = random->nextInt(width);
+        int y = random->nextInt(depth);
+        int z = random->nextInt(height);
+        
+        int id = getTile(x, y, z);
+        if (id != 0) {
+            Tile* tile = Tile::tiles[id];
+            if (tile) {
+                tile->tick(this, x, y, z, random);
+            }
+        }
+    }
+}
+
+bool Level::isTile(int x, int y, int z) {
+    if (x < 0 || y < 0 || z < 0 || x >= width || y >= depth || z >= height) {
+        return false;
+    }
+    int index = (y * height + z) * width + x;
+    return blocks[index] != 0;
+}
+
+bool Level::isSolidTile(int x, int y, int z) {
+    Tile* tile = Tile::tiles[getTile(x, y, z)];
+    return tile != nullptr && tile->isSolid();
+}
+
+bool Level::isLightBlocker(int x, int y, int z) {
+    Tile* tile = Tile::tiles[getTile(x, y, z)];
+    return tile != nullptr && tile->blocksLight();
+}
+
+float Level::getBrightness(int x, int y, int z) {
+    return this->isLit(x, y, z) ? 1.0f : 0.5f;
+}
+
+bool Level::isLit(int x, int y, int z) {
+    if (x >= 0 && y >= 0 && z >= 0 && x < width && y < depth && z < height) {
+        return y >= lightDepths[x + z * width];
+    }
+    return true;
+}
+
+int Level::getTile(int x, int y, int z) {
+    if (x < 0 || y < 0 || z < 0 || x >= width || y >= depth || z >= height) {
+        return 0;
+    }
+    int index = (y * height + z) * width + x;
+    return blocks[index];
+}
+
+bool Level::setTile(int x, int y, int z, int type) {
+    if (x < 0 || y < 0 || z < 0 || x >= width || y >= depth || z >= height) {
+        return false;
+    }
+
+    if (type == 0) {
+        if (this->isBanned(x, y, z)) {
+            this->removeBanned(x, y, z, type);
+        }
+        if (x == 0 || z == 0 || x == width - 1 || z == height - 1) {
+            if (y >= this->getGroundLevel() && y < this->getWaterLevel()) {
+                type = Tile::water->id;
+            }
+        }
+    }
+
+        if (type == Tile::water->id || type == Tile::calmWater->id) {
+        for (int xx = x - 2; xx <= x + 2; xx++) {
+            for (int yy = y - 2; yy <= y + 2; yy++) {
+                for (int zz = z - 2; zz <= z + 2; zz++) {
+                    if (this->getTile(xx, yy, zz) == 19) {
+                        type = 0;
+                    }
+                }
+            }
+        }
+    }
+        
+    int index = (y * height + z) * width + x;
+    int oldType = blocks[index];
+    
+    if (type == oldType) {
+        return false;
+    }
+    
+    blocks[index] = static_cast<uint8_t>(type);
+    
+    if (type > 0 && Tile::tiles[type] != nullptr) {
+        Tile::tiles[type]->onBlockAdded(this, x, y, z);
+    }
+    
+    neighborChanged(x - 1, y, z, type);
+    neighborChanged(x + 1, y, z, type);
+    neighborChanged(x, y - 1, z, type);
+    neighborChanged(x, y + 1, z, type);
+    neighborChanged(x, y, z - 1, type);
+    neighborChanged(x, y, z + 1, type);
+    
+    calcLightDepths(x, z, 1, 1);
+    
+    if (blockChangedListener) {
+        blockChangedListener(x, y, z, type);
+    }
+    
+    return true;
+}
+
+bool Level::setTileNoUpdate(int x, int y, int z, int type) {
+    if (x >= 0 && y >= 0 && z >= 0 && x < width && y < depth && z < height) {
+        int index = (y * height + z) * width + x;
+        if (type == blocks[index]) {
+            return false;
+        }
+        blocks[index] = static_cast<uint8_t>(type);
+
+        if (blockChangedListener) {
+            blockChangedListener(x, y, z, type);
+        }
+
+        return true;
+    }
+    return false;
+}
+
+void Level::swap(int x1, int y1, int z1, int x2, int y2, int z2) {
+    int tile1 = getTile(x1, y1, z1);
+    int tile2 = getTile(x2, y2, z2);
+
+    setTileNoUpdate(x1, y1, z1, tile2);
+    setTileNoUpdate(x2, y2, z2, tile1);
+
+    neighborChanged(x1 - 1, y1, z1, tile2);
+    neighborChanged(x1 + 1, y1, z1, tile2);
+    neighborChanged(x1, y1 - 1, z1, tile2);
+    neighborChanged(x1, y1 + 1, z1, tile2);
+    neighborChanged(x1, y1, z1 - 1, tile2);
+    neighborChanged(x1, y1, z1 + 1, tile2);
+
+    neighborChanged(x2 - 1, y2, z2, tile1);
+    neighborChanged(x2 + 1, y2, z2, tile1);
+    neighborChanged(x2, y2 - 1, z2, tile1);
+    neighborChanged(x2, y2 + 1, z2, tile1);
+    neighborChanged(x2, y2, z2 - 1, tile1);
+    neighborChanged(x2, y2, z2 + 1, tile1);
+}
+
+void Level::neighborChanged(int x, int y, int z, int type) {
+    if (x >= 0 && y >= 0 && z >= 0 && x < width && y < depth && z < height) {
+        Tile* tile = Tile::tiles[getTile(x, y, z)];
+        if (tile != nullptr) {
+            tile->neighborChanged(this, x, y, z, type);
+        }
+    }
+}
+
+bool Level::isLiquidTile(int tileId) {
+    return 
+        tileId == Tile::water->id || 
+        tileId == Tile::calmWater->id || 
+        tileId == Tile::lava->id || 
+        tileId == Tile::calmLava->id;
+}
+
+bool Level::isActiveLiquidTile(int tileId) {
+    return tileId == Tile::water->id || tileId == Tile::lava->id;
+}
+
+int Level::encodePosition(int x, int y, int z) {
+    return (z << (maxBits * 2)) | (y << maxBits) | x;
+}
+
+void Level::decodePosition(int code, int& x, int& y, int& z) {
+    int mask = (1 << maxBits) - 1;
+    x = code & mask;
+    y = (code >> maxBits) & mask;
+    z = (code >> (maxBits * 2)) & mask;
+}
+
+void Level::addTick(int x, int y, int z) {
+    ticking.insert(encodePosition(x, y, z));
+}
+
+void Level::removeTick(int x, int y, int z) {
+    ticking.erase(encodePosition(x, y, z));
+}
+
+void Level::addToTickNextTick(int x, int y, int z, int tileId) {
+    this->tickNextTickList.push_back({x, y, z, tileId});
+}
+
+bool Level::needsTick(int tileId) {
+    return 
+        tileId == Tile::water->id   ||
+        tileId == Tile::lava->id
+        ;
+}
+
+const std::vector<uint8_t>& Level::getBlocks() {
+    return this->blocks;
+}
+
+void Level::setBlockChangedListener(std::function<void(int, int, int, int)> listener) {
+    this->blockChangedListener = listener;
+}
+
+bool Level::save(const char* filename) {
+    std::ofstream file(filename, std::ios::binary);
+    if (!file.is_open()) {
+        std::cerr << "Failed to open " << filename << " for writing." << std::endl;
+        return false;
+    }
+
+    uint32_t magic = 0xDEADBEEF;
+    uint32_t version = 1;
+    file.write(reinterpret_cast<const char*>(&magic), sizeof(magic));
+    file.write(reinterpret_cast<const char*>(&version), sizeof(version));
+
+    file.write(reinterpret_cast<const char*>(&this->width), sizeof(this->width));
+    file.write(reinterpret_cast<const char*>(&this->height), sizeof(this->height));
+    file.write(reinterpret_cast<const char*>(&this->depth), sizeof(this->depth));
+
+    file.write(reinterpret_cast<const char*>(&this->xSpawn), sizeof(this->xSpawn));
+    file.write(reinterpret_cast<const char*>(&this->ySpawn), sizeof(this->ySpawn));
+    file.write(reinterpret_cast<const char*>(&this->zSpawn), sizeof(this->zSpawn));
+    file.write(reinterpret_cast<const char*>(&this->rotSpawn), sizeof(this->rotSpawn));
+
+    file.write(reinterpret_cast<const char*>(this->blocks.data()), this->blocks.size());
+
+    file.close();
+    return true;
+}
+
+bool Level::load(const char* filename) {
+    std::ifstream file(filename, std::ios::binary);
+    if (!file.is_open()) {
+        std::cerr << "File " << filename << " not found for reading." << std::endl;
+        return false;
+    }
+
+    uint32_t magic, version;
+    file.read(reinterpret_cast<char*>(&magic), sizeof(magic));
+    file.read(reinterpret_cast<char*>(&version), sizeof(version));
+
+    if (magic != 0xDEADBEEF || version != 1) {
+        std::cerr << "Invalid level file format or version." << std::endl;
+        file.close();
+        return false;
+    }
+
+    file.read(reinterpret_cast<char*>(&this->width), sizeof(this->width));
+    file.read(reinterpret_cast<char*>(&this->height), sizeof(this->height));
+    file.read(reinterpret_cast<char*>(&this->depth), sizeof(this->depth));
+    
+    file.read(reinterpret_cast<char*>(&this->xSpawn), sizeof(this->xSpawn));
+    file.read(reinterpret_cast<char*>(&this->ySpawn), sizeof(this->ySpawn));
+    file.read(reinterpret_cast<char*>(&this->zSpawn), sizeof(this->zSpawn));
+    file.read(reinterpret_cast<char*>(&this->rotSpawn), sizeof(this->rotSpawn));
+
+    size_t blockSize = this->width * this->height * this->depth;
+    this->blocks.resize(blockSize);
+    file.read(reinterpret_cast<char*>(this->blocks.data()), blockSize);
+    
+    file.close();
+    
+    this->initTransient();
+    
+    return true;
+}
+
+void Level::addBanned(int x, int y, int z, int id) {
+    this->bannedTiles.push_back({x, y, z, id});
+}
+
+void Level::removeBanned(int x, int y, int z, int id) {
+    auto it = this->bannedTiles.begin();
+    while (it != this->bannedTiles.end()) {
+        if (it->x == x && it->y == y && it->z == z && it->tileId == id) {
+            it = this->bannedTiles.erase(it);
+            return; 
+        } else {
+            ++it;
+        }
+    }
+}
+
+bool Level::isBanned(int x, int y, int z) {
+    for (TickEntry tile : this->bannedTiles) {
+        if (tile.x == x && tile.y == y && tile.z == z) {
+            return true;
+        }
+    }
+    return false;
+}
+
+============================================================
+FILE: src\cpp\level\LevelGen.cpp
+============================================================
+
+#include "level/LevelGen.hpp"
+#include "level/synth/OctaveNoise.hpp"
+#include "level/synth/CombinedNoise.hpp"
+#include "level/tile/Tile.hpp"
+#include <cmath>
+#include <iostream>
+#include <algorithm>
+#include <chrono>
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
+LevelGen::LevelGen(LevelLoaderListener* listener) : listener(listener), random() {}
+
+LevelGen::~LevelGen() = default;
+
+void LevelGen::generateLevel(Level* level, const char* username, int w, int h, int d) {
+    listener->beginLevelLoading("Generating level");
+    this->width = w;
+    this->depth = d;
+    this->height = h;
+
+    this->blocks.assign(width * height * depth, 0);
+    this->heightmap.assign(width * height, 0);
+    
+    listener->levelLoadUpdate("Raising..");
+    raise(this->heightmap);
+
+    listener->levelLoadUpdate("Eroding..");
+    erode(this->heightmap);
+
+    listener->levelLoadUpdate("Soiling..");
+    soil(this->heightmap);
+
+    listener->levelLoadUpdate("Carving..");
+    carve();
+
+    listener->levelLoadUpdate("Watering..");
+    addWaterAndLava();
+
+    listener->levelLoadUpdate("Growing..");
+    growSurface(this->heightmap);
+    
+    listener->levelLoadUpdate("Planting..");
+    addTrees(this->heightmap);
+
+        listener->levelLoadUpdate("Finalizing..");
+    listener->levelLoadProgress(50);
+
+    level->setData(width, depth, height, this->blocks);
+    level->initTransient();
+    level->creationTime = time(nullptr);
+    level->creator = username;
+    level->name = "A Nice World";
+    
+    listener->levelLoadUpdate("Done");
+    listener->levelLoadProgress(100);
+}
+
+void LevelGen::raise(std::vector<int>& map) {
+    CombinedNoise noise1(
+        std::make_unique<OctaveNoise>(random, 8),
+        std::make_unique<OctaveNoise>(random, 8)
+    );
+    CombinedNoise noise2(
+        std::make_unique<OctaveNoise>(random, 8),
+        std::make_unique<OctaveNoise>(random, 8)
+    );
+    OctaveNoise cliffNoise(random, 8);
+    
+    float scale = 1.3f;
+
+    for (int x = 0; x < width; ++x) {
+        listener->levelLoadProgress(x * 100 / (width - 1));
+        for (int z = 0; z < height; ++z) {
+            double h1 = noise1.compute(x * scale, z * scale) / 8.0 - 8.0;
+            double h2 = noise2.compute(x * scale, z * scale) / 6.0 + 6.0;
+
+            if (cliffNoise.compute(x, z) / 8.0 > 0.0) {
+                h2 = h1;
+            }
+
+            double val = std::max(h1, h2) / 2.0;
+            if (val < 0.0) val /= 2.0;
+            
+            map[x + z * width] = static_cast<int>(val);
+        }
+    }
+}
+
+void LevelGen::erode(std::vector<int>& map) {
+    CombinedNoise erosionNoise1(std::make_unique<OctaveNoise>(random, 8), std::make_unique<OctaveNoise>(random, 8));
+    CombinedNoise erosionNoise2(std::make_unique<OctaveNoise>(random, 8), std::make_unique<OctaveNoise>(random, 8));
+
+    for (int x = 0; x < width; ++x) {
+        listener->levelLoadProgress(x * 100 / (width - 1));
+        for (int z = 0; z < height; ++z) {
+            double val = erosionNoise1.compute(x * 2.0, z * 2.0) / 8.0;
+            int erosion = erosionNoise2.compute(x * 2.0, z * 2.0) > 0.0 ? 1 : 0;
+
+            if (val > 2.0) {
+                int h = map[x + z * width];
+                h = ((h - erosion) / 2) * 2 + erosion;
+                map[x + z * width] = h;
+            }
+        }
+    }
+}
+
+void LevelGen::soil(std::vector<int>& map) {
+    OctaveNoise soilNoise(random, 8);
+    int waterLevel = depth / 2;
+
+    for (int x = 0; x < width; ++x) {
+        listener->levelLoadProgress(x * 100 / (width - 1));
+        for (int z = 0; z < height; ++z) {
+            int soilDepth = static_cast<int>(soilNoise.compute(x, z) / 24.0) - 4;
+            
+            int dirtTopY = map[x + z * width] + waterLevel;
+            int rockTopY = dirtTopY + soilDepth;
+            map[x + z * width] = std::max(dirtTopY, rockTopY);
+
+            for (int y = 0; y < depth; ++y) {
+                int index = (y * height + z) * width + x;
+                uint8_t id = 0;
+
+                if (y <= dirtTopY) {
+                    id = Tile::dirt->id;
+                }
+
+                if (y <= rockTopY) {
+                    id = Tile::rock->id;
+                }
+
+                blocks[index] = id;
+            }
+        }
+    }
+}
+
+void LevelGen::growSurface(const std::vector<int>& map) {
+    listener->levelLoadUpdate("Growing..");
+    OctaveNoise sandNoise(random, 8);
+    OctaveNoise gravelNoise(random, 8);
+    int waterLevel = depth / 2;
+
+    for (int x = 0; x < width; ++x) {
+        listener->levelLoadProgress(x * 100 / (width - 1));
+        for (int z = 0; z < height; ++z) {
+            bool placeSand = sandNoise.compute(x, z) > 8.0;
+            bool placeGravel = gravelNoise.compute(x, z) > 12.0;
+            
+            int surfaceY = map[x + z * width];
+            if (surfaceY < 0 || surfaceY >= depth - 1) continue;
+
+            int surfaceIndex = (surfaceY * height + z) * width + x;
+            int blockAboveIndex = ((surfaceY + 1) * height + z) * width + x;
+            int blockAboveId = blocks[blockAboveIndex];
+
+            if ((blockAboveId == Tile::water->id || blockAboveId == Tile::calmWater->id) && surfaceY <= waterLevel - 1 && placeGravel) {
+                blocks[surfaceIndex] = Tile::gravel->id;
+            }
+
+            if (blockAboveId == 0) {
+                uint8_t surfaceID = Tile::grass->id;
+                if (surfaceY <= waterLevel - 1 && placeSand) {
+                    surfaceID = Tile::sand->id;
+                }
+                blocks[surfaceIndex] = surfaceID;
+            }
+        }
+    }
+}
+
+void LevelGen::carve() {
+    int numCaves = width * height * depth / 256 / 64;
+    for (int i = 0; i < numCaves; ++i) {
+        listener->levelLoadProgress(i * 100 / (numCaves - 1));
+        float x = random.nextFloat() * width;
+        float y = random.nextFloat() * depth;
+        float z = random.nextFloat() * height;
+        
+        int length = static_cast<int>((random.nextFloat() + random.nextFloat()) * 75.0f);
+        
+        float yaw = random.nextFloat() * 2.0f * M_PI;
+        float pitch = 0.0f;
+        float yawMod = 0.0f;
+        float pitchMod = 0.0f;
+
+        for (int l = 0; l < length; ++l) {
+            x += std::sin(yaw) * std::cos(pitch);
+            z += std::cos(yaw) * std::cos(pitch);
+            y += std::sin(pitch);
+            
+            yaw += yawMod * 0.2f;
+            yawMod = (yawMod * 0.9f) + (random.nextFloat() - random.nextFloat());
+            pitch = (pitch + pitchMod * 0.5f) * 0.5f;
+            pitchMod = (pitchMod * 0.9f) + (random.nextFloat() - random.nextFloat());
+            
+            float size = std::sin(static_cast<float>(l) * M_PI / static_cast<float>(length)) * 2.5f + 1.0f;
+
+            for (int ix = static_cast<int>(x - size); ix <= static_cast<int>(x + size); ++ix) {
+                for (int iy = static_cast<int>(y - size); iy <= static_cast<int>(y + size); ++iy) {
+                    for (int iz = static_cast<int>(z - size); iz <= static_cast<int>(z + size); ++iz) {
+                        float dx = ix - x;
+                        float dy = iy - y;
+                        float dz = iz - z;
+
+                        if (dx * dx + dy * dy * 2.0f + dz * dz < size * size &&
+                            ix >= 1 && iy >= 1 && iz >= 1 && 
+                            ix < width - 1 && iy < depth - 1 && iz < height - 1) {
+                            
+                            int index = (iy * height + iz) * width + ix;
+                            if (blocks[index] == Tile::rock->id) {
+                                blocks[index] = 0;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    listener->levelLoadUpdate("Adding minerals..");
+    listener->levelLoadProgress(25);
+    addVeins(Tile::coalOre->id, 90);
+    listener->levelLoadProgress(50);
+    addVeins(Tile::ironOre->id, 75);
+    listener->levelLoadProgress(75);
+    addVeins(Tile::goldOre->id, 50);
+    listener->levelLoadProgress(100);
+}
+
+void LevelGen::addWaterAndLava() {
+    int waterLevel = depth / 2;
+    int filled = 0;
+    
+    for (int x = 0; x < width; ++x) {
+        floodFill(x, waterLevel - 1, 0, Tile::water->id);
+        floodFill(x, waterLevel - 1, height - 1, Tile::water->id);
+    }
+    for (int z = 0; z < height; ++z) {
+        floodFill(0, waterLevel - 1, z, Tile::water->id);
+        floodFill(width - 1, waterLevel - 1, z, Tile::water->id);
+    }
+    
+    int waterSources = width * height / 200;
+    for (int i = 0; i < waterSources; ++i) {
+        listener->levelLoadProgress(i * 100 / (waterSources - 1));
+        int x = random.nextInt(width);
+        int y = waterLevel - 1 - random.nextInt(2);
+        int z = random.nextInt(height);
+        if(blocks[(y * height + z) * width + x] == 0)
+            floodFill(x, y, z, Tile::water->id);
+    }
+
+    listener->levelLoadUpdate("Melting..");
+    int lavaSources = width * height * depth / 10000;
+    for (int i = 0; i < lavaSources; i++) {
+        listener->levelLoadProgress(i * 100 / (lavaSources - 1));
+        int x = random.nextInt(width);
+        int y = random.nextInt(depth / 4);
+        int z = random.nextInt(height);
+        if (blocks[(y * height + z) * width + x] == 0) {
+            floodFill(x, y, z, Tile::lava->id);
+        }
+    }
+}
+
+
+void LevelGen::floodFill(int x, int y, int z, uint8_t targetBlock) {
+    std::vector<int> stack;
+    stack.reserve(width * height);
+    stack.push_back((y * height + z) * width + x);
+
+    while(!stack.empty()){
+        int index = stack.back();
+        stack.pop_back();
+
+        if(blocks[index] == 0){
+            blocks[index] = targetBlock;
+
+            int ix = index % width;
+            int temp = index / width;
+            int iz = temp % height;
+            int iy = temp / height;
+            
+            if(ix > 0) stack.push_back(index - 1);
+            if(ix < width - 1) stack.push_back(index + 1);
+            if(iz > 0) stack.push_back(index - width);
+            if(iz < height - 1) stack.push_back(index + width);
+            if(iy > 0) stack.push_back(index - width * height);
+        }
+    }
+}
+
+void LevelGen::addTrees(const std::vector<int>& map) {
+    int numTreePatches = width * height / 4000;
+
+    if (numTreePatches <= 1) {
+        if (numTreePatches == 1) {
+            listener->levelLoadProgress(50);
+        }
+    }
+
+    for (int i = 0; i < numTreePatches; ++i) {
+        if (numTreePatches > 1) {
+            listener->levelLoadProgress(i * 100 / (numTreePatches - 1));
+        }
+
+        int patchX = random.nextInt(width);
+        int patchZ = random.nextInt(height);
+
+        for (int j = 0; j < 20; ++j) {
+            int treeX = patchX;
+            int treeZ = patchZ;
+
+            for (int k = 0; k < 20; ++k) {
+                treeX += random.nextInt(6) - random.nextInt(6);
+                treeZ += random.nextInt(6) - random.nextInt(6);
+
+                if (treeX >= 0 && treeZ >= 0 && treeX < width && treeZ < height) {
+                    int treeY = map[treeX + treeZ * width] + 1;
+                    int treeHeight = random.nextInt(3) + 4;
+
+                    bool canPlace = true;
+
+                    if (treeY < 1 || treeY + treeHeight + 1 >= depth) {
+                        canPlace = false;
+                    }
+
+                    if (canPlace) {
+                        for (int y = treeY; y <= treeY + 1 + treeHeight && canPlace; ++y) {
+                            int radius = 1;
+                            if (y >= treeY + treeHeight - 2) {
+                                radius = 2;
+                            }
+
+                            for (int x = treeX - radius; x <= treeX + radius && canPlace; ++x) {
+                                for (int z = treeZ - radius; z <= treeZ + radius && canPlace; ++z) {
+                                    if (x >= 0 && y >= 0 && z >= 0 && x < width && y < depth && z < height) {
+                                        if (blocks[(y * height + z) * width + x] != 0) {
+                                            canPlace = false;
+                                        }
+                                    } else {
+                                        canPlace = false;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (canPlace) {
+                        int groundIndex = ((treeY - 1) * height + treeZ) * width + treeX;
+                        if (blocks[groundIndex] == Tile::grass->id && treeY < depth - treeHeight - 1) {
+                            blocks[groundIndex] = Tile::dirt->id;
+
+                            for (int leafY = treeY - 3 + treeHeight; leafY <= treeY + treeHeight; ++leafY) {
+                                int yOff = leafY - (treeY + treeHeight);
+                                int leafRadius = 1 - yOff / 2;
+
+                                for (int leafX = treeX - leafRadius; leafX <= treeX + leafRadius; ++leafX) {
+                                    int xOff = leafX - treeX;
+                                    for (int leafZ = treeZ - leafRadius; leafZ <= treeZ + leafRadius; ++leafZ) {
+                                        int zOff = leafZ - treeZ;
+                                        if (std::abs(xOff) != leafRadius || std::abs(zOff) != leafRadius || (random.nextInt(2) == 0 && yOff != 0)) {
+                                            int leafIndex = (leafY * height + leafZ) * width + leafX;
+                                            if (leafIndex >= 0 && leafIndex < blocks.size())
+                                                blocks[leafIndex] = Tile::leaves->id;
+                                        }
+                                    }
+                                }
+                            }
+
+                            for (int trunkY = 0; trunkY < treeHeight; ++trunkY) {
+                                int trunkIndex = ((treeY + trunkY) * height + treeZ) * width + treeX;
+                                if (trunkIndex >= 0 && trunkIndex < blocks.size())
+                                    blocks[trunkIndex] = Tile::log->id;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    listener->levelLoadProgress(100);
+}
+
+void LevelGen::addVeins(int tileId, int abundance) {
+    int numVeins = width * height * depth * abundance / 100 / 64 / 100;
+
+    for (int i = 0; i < numVeins; ++i) {
+        float x = random.nextFloat() * width;
+        float y = random.nextFloat() * depth;
+        float z = random.nextFloat() * height;
+        
+        int length = static_cast<int>((random.nextFloat() + random.nextFloat()) * 75.0f * (abundance / 100.0f));
+        
+        float yaw = random.nextFloat() * 2.0f * M_PI;
+        float pitch = random.nextFloat() * 2.0f * M_PI;
+        float yawMod = 0.0f;
+        float pitchMod = 0.0f;
+
+        for (int l = 0; l < length; ++l) {
+            x += std::sin(yaw) * std::cos(pitch);
+            z += std::cos(yaw) * std::cos(pitch);
+            y += std::sin(pitch);
+            
+            yaw += yawMod * 0.2f;
+            yawMod = (yawMod * 0.9f) + (random.nextFloat() - random.nextFloat());
+            pitch = (pitch + pitchMod * 0.5f) * 0.5f;
+            pitchMod = (pitchMod * 0.9f) + (random.nextFloat() - random.nextFloat());
+            
+            float size = std::sin(static_cast<float>(l) * M_PI / static_cast<float>(length)) * (abundance / 100.0f) + 1.0f;
+
+            for (int ix = static_cast<int>(x - size); ix <= static_cast<int>(x + size); ++ix) {
+                for (int iy = static_cast<int>(y - size); iy <= static_cast<int>(y + size); ++iy) {
+                    for (int iz = static_cast<int>(z - size); iz <= static_cast<int>(z + size); ++iz) {
+                        float dx = ix - x;
+                        float dy = iy - y;
+                        float dz = iz - z;
+
+                        if (dx * dx + dy * dy * 2.0f + dz * dz < size * size &&
+                            ix >= 1 && iy >= 1 && iz >= 1 && 
+                            ix < width - 1 && iy < depth - 1 && iz < height - 1) {
+                            
+                            int index = (iy * height + iz) * width + ix;
+
+                            if (blocks[index] == Tile::rock->id) {
+                                blocks[index] = tileId;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+============================================================
+FILE: src\cpp\level\tile\BushTile.cpp
+============================================================
+
+#include "level/tile/BushTile.hpp"
+
+Bush::~Bush() {}
+
+Bush::Bush(int id, int textureId) : Tile(id) {
+    this->textureId = textureId;
+}
+
+void Bush::tick(Level* level, int x, int y, int z, Random* random) {
+    int tileIdBelow = level->getTile(x, y-1, z);
+
+    if (!level->isLit(x, y, z) || (tileIdBelow != Tile::grass->id && tileIdBelow != Tile::dirt->id)) {
+        level->setTile(x, y, z, 0);
+    }
+}
+
+bool Bush::blocksLight() {
+    return false;
+}
+
+bool Bush::isSolid() {
+    return false;
+}
+
+============================================================
+FILE: src\cpp\level\tile\CalmLiquidTile.cpp
+============================================================
+
+#include "level/tile/CalmLiquidTile.hpp"
+
+CalmLiquidTile::~CalmLiquidTile() {}
+
+CalmLiquidTile::CalmLiquidTile(int id, int liquidType) : LiquidTile::LiquidTile(id, liquidType) {
+    this->tileId = id - 1;
+    this->calmTileId = id;
+}
+
+bool CalmLiquidTile::isCalmLiquid() {
+    return true;
+}
+
+void CalmLiquidTile::tick(Level* level, int x, int y, int z, Random* random) {
+    // no implementation
+}
+
+void CalmLiquidTile::neighborChanged(Level* level, int x, int y, int z, int type) {
+    bool hasAirHeighbor = false;
+    if (level->getTile(x-1, y, z) == 0) hasAirHeighbor = true;
+    if (level->getTile(x+1, y, z) == 0) hasAirHeighbor = true;
+    if (level->getTile(x, y, z-1) == 0) hasAirHeighbor = true;
+    if (level->getTile(x, y, z+1) == 0) hasAirHeighbor = true;
+    if (level->getTile(x, y-1, z) == 0) hasAirHeighbor = true;
+
+    if (this->liquidType == 1 && (type == Tile::lava->id || type == Tile::calmLava->id)) {
+        level->setTileNoUpdate(x, y, z, Tile::rock->id);
+        return;
+    }
+    if (this->liquidType == 2 && (type == Tile::water->id || type == Tile::calmWater->id)) {
+        level->setTileNoUpdate(x, y, z, Tile::rock->id);
+        return;
+    }
+
+    if (hasAirHeighbor) {
+        level->setTileNoUpdate(x, y, z, this->tileId);
+        level->addToTickNextTick(x, y, z, this->tileId);
+    }
+}
+
+============================================================
+FILE: src\cpp\level\tile\FallingTile.cpp
+============================================================
+
+#include "level/tile/FallingTile.hpp"
+
+FallingTile::~FallingTile() {}
+
+FallingTile::FallingTile(int id, int textureId) : Tile::Tile(id, textureId) {
+    this->textureId = textureId;
+    this->tileId = id;
+}
+
+void FallingTile::tryFall(Level* level, int x, int y, int z) {
+    int finalY = y;
+
+    while (level->getTile(x, finalY - 1, z) == 0 && finalY > 0) {
+        finalY--;
+    }
+
+    if (finalY != y) {
+        level->swap(x, y, z, x, finalY, z);
+    }
+}
+
+void FallingTile::onBlockAdded(Level* level, int x, int y, int z) {
+    tryFall(level, x, y, z);
+}
+
+void FallingTile::neighborChanged(Level* level, int x, int y, int z, int type) {
+    tryFall(level, x, y, z);
+}
+
+============================================================
+FILE: src\cpp\level\tile\GlassTile.cpp
+============================================================
+
+#include "level/tile/GlassTile.hpp"
+
+GlassTile::GlassTile(int id) : TransparentTile(id, 49) {
+}
+
+bool GlassTile::shouldRenderFace(Level* level, int x, int y, int z, int layer, int face) {
+    int neighborId = level->getTile(x, y, z);
+    
+    if (neighborId == this->id) {
+        return false;
+    }
+    
+    return TransparentTile::shouldRenderFace(level, x, y, z, layer, face);
+}
+
+
+============================================================
+FILE: src\cpp\level\tile\GrassTile.cpp
+============================================================
+
+#include "level/tile/GrassTile.hpp"
+
+GrassTile::~GrassTile() {}
+
+GrassTile::GrassTile(int id) : Tile(id) {
+    this->textureId = 4;
+}
+
+int GrassTile::getTexture(int face) {
+    return face == 1 ? 0 : face == 0 ? 3 : 4;
+}
+
+void GrassTile::tick(Level* level, int x, int y, int z, Random* random) {
+    if (level->isLit(x, y+1, z)) {
+        for (int i = 0; i < 4; ++i) {
+            int targetX = x + random->nextInt(3) - 1;
+            int targetY = y + random->nextInt(5) - 3;
+            int targetZ = z + random->nextInt(3) - 1;
+
+            if (level->getTile(targetX, targetY, targetZ) == Tile::dirt->id && level->isLit(targetX, targetY+1, targetZ)) {
+                level->setTile(targetX, targetY, targetZ, Tile::grass->id);
+            }
+        }
+    } else {
+        level->setTile(x, y, z, Tile::dirt->id);
+    }
+}
+
+============================================================
+FILE: src\cpp\level\tile\LiquidTile.cpp
+============================================================
+
+#include "level/tile/LiquidTile.hpp"
+
+LiquidTile::~LiquidTile() {}
+
+LiquidTile::LiquidTile(int id, int liquidType) : Tile::Tile(id) {
+    this->liquidType = liquidType;
+    if (this->liquidType == 2) {
+        this->textureId = 30;
+    } else {
+        this->textureId = 14;
+    }
+
+    if (this->liquidType == 1) {
+        this->tickRate = 40;
+    } else {
+        this->tickRate = 5;
+    }
+
+    this->tileId = id;
+    this->calmTileId = id++;
+    float dd = 0.1f;
+    this->setShape(0.0f, 0.0f - dd, 0.0f, 1.0f, 1.0f - dd, 1.0f);
+}
+
+bool LiquidTile::tryFlow(Level* level, int x, int y, int z) {
+    if (level->getTile(x, y, z) == 0 && this->liquidType == 1) {
+        for (int xx = x - 2; xx <= x + 2; xx++) {
+            for (int yy = y - 2; yy <= y + 2; yy++) {
+                for (int zz = z - 2; zz <= z + 2; zz++) {
+                   int tileId = level->getTile(xx, yy, zz);
+                   if (tileId == Tile::sponge->id) { 
+                       return false;
+                   }
+                }
+            }
+        }
+
+        if (level->setTile(x, y, z, this->tileId)) {
+            level->addToTickNextTick(x, y, z, this->tileId);
+        }
+    } else if (level->getTile(x, y, z) == 0 && this->liquidType == 2) {
+        if (level->setTile(x, y, z, this->tileId)) {
+            level->addToTickNextTick(x, y, z, this->tileId);
+        }
+    }
+    return false;
+}
+
+float LiquidTile::getBrightness(Level* level, int x, int y, int z) {
+    return this->liquidType == 2 ? 100.0f : level->getBrightness(x, y, z);
+}
+
+void LiquidTile::tick(Level* level, int x, int y, int z, Random* random) {
+    bool hasChanged = false;
+    int originalY = y;
+
+    bool flowedDown;
+    do {
+        y--;
+        if (level->getTile(x, y, z) != 0) break;
+        
+        flowedDown = level->setTile(x, y, z, this->tileId);
+        if (flowedDown) hasChanged = true;
+        
+    } while (flowedDown && this->liquidType != 2);
+    
+    y = originalY;
+
+    if (this->liquidType == 1 || !hasChanged) {
+        tryFlow(level, x - 1, y, z);
+        tryFlow(level, x + 1, y, z);
+        tryFlow(level, x, y, z - 1);
+        tryFlow(level, x, y, z + 1);
+    }
+}
+
+
+
+bool LiquidTile::shouldRenderFace(Level* level, int x, int y, int z, int layer, int face) {
+    if (x < 0 || y < 0 || z < 0 || x >= level->width || y >= level->depth) {
+        return false;
+    }
+    if (layer != 1 && this->liquidType == 1) {
+        return false;
+    }
+    
+    int neighborId = level->getTile(x, y, z);
+    
+    if (neighborId != this->tileId && neighborId != this->calmTileId) {
+        return face != 1 || level->getTile(x-1, y, z) != 0 && level->getTile(x+1, y, z != 0) && level->getTile(x, y, z-1) != 0 && level->getTile(x, y, z+1) != 0 ? Tile::shouldRenderFace(level, x, y, z, -1, face) : true;
+    }
+    
+    return false;
+}
+
+bool LiquidTile::mayPick() {
+    return false;
+}
+
+bool LiquidTile::blocksLight() {
+    return true;
+}
+
+bool LiquidTile::isSolid() {
+    return false;
+}
+
+int LiquidTile::getLiquidType() {
+    return this->liquidType;
+}
+
+void LiquidTile::neighborChanged(Level* level, int x, int y, int z, int neighborTileId) {
+    if (this->liquidType == 1 && (neighborTileId == Tile::lava->id || neighborTileId == Tile::calmLava->id)) {
+        level->setTileNoUpdate(x, y, z, Tile::rock->id);
+    }
+    if (this->liquidType == 2 && (neighborTileId == Tile::water->id || neighborTileId == Tile::calmWater->id)) {
+        level->setTileNoUpdate(x, y, z, Tile::rock->id);
+    }
+
+    level->addToTickNextTick(x, y, z, this->tileId);
+}
+
+============================================================
+FILE: src\cpp\level\tile\LogTile.cpp
+============================================================
+
+#include "level/tile/LogTile.hpp"
+
+LogTile::LogTile(int id) : Tile(id) {
+    this->textureId = 20;
+}
+
+LogTile::~LogTile() {}
+
+int LogTile::getTexture(int face) {
+    return face == 1 ? 21 : face == 0 ? 21 : 20;
+}
+
+============================================================
+FILE: src\cpp\level\tile\SpongeTile.cpp
+============================================================
+
+#include "level/tile/SpongeTile.hpp"
+
+SpongeTile::SpongeTile(int id) : Tile(id) {
+    this->textureId = 48;
+}
+
+void SpongeTile::onBlockAdded(Level* level, int x, int y, int z) {
+    checkSpongeEffect(level, x, y, z);
+}
+
+void SpongeTile::neighborChanged(Level* level, int x, int y, int z, int type) {
+    checkSpongeEffect(level, x, y, z);
+}
+
+void SpongeTile::checkSpongeEffect(Level* level, int x, int y, int z) {
+    for (int dx = -2; dx <= 2; dx++) {
+        for (int dy = -2; dy <= 2; dy++) {
+            for (int dz = -2; dz <= 2; dz++) {
+                if (level->getTile(x + dx, y + dy, z + dz) == Tile::water->id || level->getTile(x + dx, y + dy, z + dz) == Tile::calmWater->id) {
+                    level->setTile(x + dx, y + dy, z + dz, 0);
+                }
+            }
+        }
+    }
+}
+
+============================================================
+FILE: src\cpp\level\tile\Tile.cpp
+============================================================
+
+#include "level/tile/GrassTile.hpp"
+#include "level/tile/BushTile.hpp"
+#include "level/tile/LiquidTile.hpp"
+#include "level/tile/CalmLiquidTile.hpp"
+#include "level/tile/FallingTile.hpp"
+#include "level/tile/LogTile.hpp"
+#include "level/tile/TransparentTile.hpp"
+#include "level/tile/SpongeTile.hpp"
+#include "level/tile/GlassTile.hpp"
+#include "level/tile/Tile.hpp"
+
+std::array<Tile*, 256> Tile::tiles = {nullptr};
+const Tile* Tile::empty = nullptr;
+
+static Tile rockTile(1, 1);
+static GrassTile grassTile(2);
+static Tile dirtTile(3, 3);
+static Tile cobbleTile(4, 5);
+static Tile woodTile(5, 2);
+static Bush bushTile(6, 15);
+static Tile unbreakableTile(7, 17);
+static LiquidTile waterTile(8, 1);
+static CalmLiquidTile calmWaterTile(9, 1);
+static LiquidTile lavaTile(10, 2);
+static CalmLiquidTile calmLavaTile(11, 2);
+static FallingTile gravelTile(12, 19);
+static FallingTile sandTile(13, 18);
+static LogTile logTile(14);
+static TransparentTile leavesTile(15, 22);
+static Tile goldOreTile(16, 32);
+static Tile ironOreTile(17, 33);
+static Tile coalOreTile(18, 34);
+static SpongeTile spongeTile(19);
+static GlassTile glassTile(20);
+static Tile woolTile1(21, 64);
+static Tile woolTile2(22, 65);
+static Tile woolTile3(23, 66);
+static Tile woolTile4(24, 67);
+static Tile woolTile5(25, 68);
+static Tile woolTile6(26, 69);
+static Tile woolTile7(27, 70);
+static Tile woolTile8(28, 71);
+static Tile woolTile9(29, 72);
+static Tile woolTile10(30, 73);
+static Tile woolTile11(31, 74);
+static Tile woolTile12(32, 75);
+static Tile woolTile13(33, 76);
+static Tile woolTile14(34, 77);
+static Tile woolTile15(35, 78);
+static Tile woolTile16(36, 79);
+static Bush redFlowerTile(37, 12);
+static Bush yellowFlowerTile(38, 13);
+static Bush redMushroomTile(39, 28);
+static Bush brownMushroomTile(40, 29);
+static Tile goldBlockTile(41, 40);
+
+const Tile* Tile::rock = &rockTile;
+const Tile* Tile::grass = &grassTile;
+const Tile* Tile::dirt = &dirtTile;
+const Tile* Tile::cobblestone = &cobbleTile;
+const Tile* Tile::wood = &woodTile;
+const Tile* Tile::bush = &bushTile;
+const Tile* Tile::unbreakable = &unbreakableTile;
+const Tile* Tile::water = &waterTile;
+const Tile* Tile::calmWater = &calmWaterTile;
+const Tile* Tile::lava = &lavaTile;
+const Tile* Tile::calmLava = &calmLavaTile;
+const Tile* Tile::gravel = &gravelTile;
+const Tile* Tile::sand = &sandTile;
+const Tile* Tile::log = &logTile;
+const Tile* Tile::leaves = &leavesTile;
+const Tile* Tile::goldOre = &goldOreTile;
+const Tile* Tile::ironOre = &ironOreTile;
+const Tile* Tile::coalOre = &coalOreTile;
+const Tile* Tile::sponge = &spongeTile;
+const Tile* Tile::glass = &glassTile;
+const Tile* Tile::wool1 = &woolTile1;
+const Tile* Tile::wool2 = &woolTile2;
+const Tile* Tile::wool3 = &woolTile3;
+const Tile* Tile::wool4 = &woolTile4;
+const Tile* Tile::wool5 = &woolTile5;
+const Tile* Tile::wool6 = &woolTile6;
+const Tile* Tile::wool7 = &woolTile7;
+const Tile* Tile::wool8 = &woolTile8;
+const Tile* Tile::wool9 = &woolTile9;
+const Tile* Tile::wool10 = &woolTile10;
+const Tile* Tile::wool11 = &woolTile11;
+const Tile* Tile::wool12 = &woolTile12;
+const Tile* Tile::wool13 = &woolTile13;
+const Tile* Tile::wool14 = &woolTile14;
+const Tile* Tile::wool15 = &woolTile15;
+const Tile* Tile::wool16 = &woolTile16;
+const Tile* Tile::redFlower = &redFlowerTile;
+const Tile* Tile::yellowFlower = &yellowFlowerTile;
+const Tile* Tile::redMushroom = &redMushroomTile;
+const Tile* Tile::brownMushroom = &brownMushroomTile;
+const Tile* Tile::goldBlock = &goldBlockTile;
+
+Tile::Tile(int id) {
+    tiles[id] = this;
+    this->id = id;
+    this->setShape(0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f);
+    this->textureId = 0;
+}
+
+Tile::Tile(int id, int texture) : Tile(id) {
+    this->textureId = texture;
+}
+
+Tile::~Tile() {}
+
+bool Tile::shouldRenderFace(Level* level, int x, int y, int z, int layer, int face) {
+    if (layer == 1) {
+        return false;
+    } else {
+        return !level->isSolidTile(x, y, z);
+    }
+}
+
+int Tile::getTexture(int face) {
+    return this->textureId;
+}
+
+void Tile::setShape(float x0, float y0, float z0, float x1, float y1, float z1) {
+    this->minX = x0;
+    this->minY = y0;
+    this->minZ = z0;
+    this->maxX = x1;
+    this->maxY = y1;
+    this->maxZ = z1;
+}
+
+float Tile::getBrightness(Level* level, int x, int y, int z) {
+    return level->getBrightness(x, y, z);
+}
+
+
+void Tile::neighborChanged(Level* level, int x, int y, int z, int type) {
+    // no implementation
+}
+
+void Tile::tick(Level* level, int x, int y, int z, Random* random) {
+    // no implementation
+}
+
+bool Tile::mayPick() {
+    return true;
+}
+
+bool Tile::isSolid() {
+    return true;
+}
+
+bool Tile::blocksLight() {
+    return true;
+}
+
+int Tile::getLiquidType() {
+    return 0;
+}
+
+bool Tile::isCalmLiquid() {
+    return false;
+}
+
+void Tile::onBlockAdded(Level* level, int x, int y, int z) {
+    // No implementation
+}
+
+============================================================
+FILE: src\cpp\level\tile\TransparentTile.cpp
+============================================================
+
+#include "level/tile/TransparentTile.hpp"
+
+TransparentTile::TransparentTile(int id, int textureId) : Tile(id) {
+    this->textureId = textureId;
+}
+
+TransparentTile::~TransparentTile() {}
+
+bool TransparentTile::isSolid() {
+    return false;
+}
+
+bool TransparentTile::blocksLight() {
+    return false;
+}
+
+============================================================
+FILE: src\python\admin_manager.py
+============================================================
+
+import logging
+
+ADMINS = set()
+
+def load_admins():
+    global ADMINS
+    try:
+        with open("admins.txt", "r") as f:
+            ADMINS = {line.strip().lower() for line in f if line.strip()}
+        logging.info(f"Loaded {len(ADMINS)} admins.")
+    except FileNotFoundError:
+        logging.warning("admins.txt not found, creating an empty one. No one is an admin.")
+        open("admins.txt", "w").close()
+
+def is_admin(username):
+    return username.lower() in ADMINS
+
+def add_admin(username):
+    username_lower = username.lower()
+    if username_lower not in ADMINS:
+        ADMINS.add(username_lower)
+        try:
+            with open("admins.txt", "a") as f:
+                f.write(f"\n{username}")
+            logging.info(f"User '{username}' is now an admin.")
+            return True
+        except IOError:
+            return False
+    return False
+
+def remove_admin(username):
+    username_lower = username.lower()
+    if username_lower in ADMINS:
+        ADMINS.remove(username_lower)
+        try:
+            with open("admins.txt", "w") as f:
+                for admin in ADMINS:
+                    f.write(f"{admin}\n")
+            logging.info(f"User '{username}' is no longer an admin.")
+            return True
+        except IOError:
+            return False
+    return False
+
+============================================================
+FILE: src\python\ban_manager.py
+============================================================
+
+import logging
+
+BANNED_USERS = set()
+BANNED_IPS = set()
+
+def load_bans():
+    try:
+        with open("banned.txt", "r") as f:
+            BANNED_USERS.update(line.strip() for line in f if line.strip())
+        logging.info(f"Loaded {len(BANNED_USERS)} banned users.")
+    except FileNotFoundError:
+        logging.warning("banned.txt not found, creating empty file.")
+        open("banned.txt", "w").close()
+
+    try:
+        with open("banned-ip.txt", "r") as f:
+            BANNED_IPS.update(line.strip() for line in f if line.strip())
+        logging.info(f"Loaded {len(BANNED_IPS)} banned IPs.")
+    except FileNotFoundError:
+        logging.warning("banned-ip.txt not found, creating empty file.")
+        open("banned-ip.txt", "w").close()
+
+def is_user_banned(username):
+    return username.lower() in BANNED_USERS
+
+def is_ip_banned(ip_address):
+    return ip_address in BANNED_IPS
+
+
+def add_ban(username):
+    username_lower = username.lower()
+    if username_lower not in BANNED_USERS:
+        BANNED_USERS.add(username_lower)
+        try:
+            with open("banned.txt", "a") as f:
+                f.write(f"\n{username}")
+            logging.info(f"User '{username}' has been banned and saved to file.")
+            return True
+        except IOError as e:
+            logging.error(f"Could not write to banned.txt: {e}")
+            return False
+    return False
+
+def add_ip_ban(ip_address):
+    if ip_address not in BANNED_IPS:
+        BANNED_IPS.add(ip_address)
+        try:
+            with open("banned-ip.txt", "a") as f:
+                f.write(f"\n{ip_address}")
+            logging.info(f"IP Address '{ip_address}' has been banned and saved to file.")
+            return True
+        except IOError as e:
+            logging.error(f"Could not write to banned-ip.txt: {e}")
+            return False
+    return False
+
+def unban_user(username):
+    username_lower = username.lower()
+    if username_lower in BANNED_USERS:
+        BANNED_USERS.remove(username_lower)
+        try:
+            with open("banned.txt", "w") as f:
+                for user in BANNED_USERS:
+                    f.write(f"{user}\n")
+            logging.info(f"User '{username}' unbanned.")
+            return True
+        except IOError:
+            return False
+    return False
+
+============================================================
+FILE: src\python\command_handler.py
+============================================================
+
+import logging
+import asyncio
+from admin_manager import is_admin, add_admin, remove_admin
+from player_manager import find_player_by_username
+from world_manager import set_spawn_pos
+from ban_manager import add_ban, add_ip_ban, unban_user
+from packets import create_chat_message_packet, create_set_spawn_position_packet, create_set_player_position_packet
+from network import safe_send
+
+async def send_private_message(player, message):
+    from network import safe_send
+    if player and player.ws:
+        packet = create_chat_message_packet(f"&e{message}")
+        await safe_send(player.ws, packet)
+
+async def handle_command(sender_player, command_str, broadcast_func):
+    if not is_admin(sender_player.username):
+        await send_private_message(sender_player, "You do not have permission to use commands.")
+        return
+
+    parts = command_str.strip().split()
+    command = parts[0].lower()
+    args = parts[1:]
+
+    logging.info(f"Admin '{sender_player.username}' issued command: {command_str}")
+
+    # --- /kick <username> [reason] ---
+    if command == "/kick" and len(args) >= 1:
+        target_username = args[0]
+        reason = " ".join(args[1:]) if len(args) > 1 else "Kicked by an admin."
+        target_player = find_player_by_username(target_username)
+
+        if target_player:
+            await target_player.ws.close(1000, reason)
+            await broadcast_func(create_chat_message_packet(f"&e{target_player.username} was kicked. ({reason})"))
+        else:
+            await send_private_message(sender_player, f"Player '{target_username}' not found.")
+    
+    # --- /ban <username> ---
+    elif command == "/ban" and len(args) == 1:
+        target_username = args[0]
+        if add_ban(target_username):
+            await send_private_message(sender_player, f"Player '{target_username}' has been banned.")
+            target_player = find_player_by_username(target_username)
+            if target_player:
+                await target_player.ws.close(1000, "You have been banned.")
+            await broadcast_func(create_chat_message_packet(f"&e{target_username} was banned."))
+        else:
+            await send_private_message(sender_player, f"Player '{target_username}' is already banned.")
+            
+    # --- /banip <username> ---
+    elif command == "/banip" and len(args) == 1:
+        target_username = args[0]
+        target_player = find_player_by_username(target_username)
+        if target_player:
+            ip_address = target_player.ws.remote_address[0]
+            if add_ip_ban(ip_address):
+                await send_private_message(sender_player, f"IP {ip_address} for player '{target_username}' has been banned.")
+                await target_player.ws.close(1000, "You have been IP banned.")
+                await broadcast_func(create_chat_message_packet(f"&e{target_username} was IP banned."))
+            else:
+                await send_private_message(sender_player, f"IP {ip_address} is already banned.")
+        else:
+            await send_private_message(sender_player, f"Player '{target_username}' not found to get IP from.")
+
+    # --- /broadcast <message> or /say <message> ---
+    elif (command == "/broadcast" or command == "/say") and len(args) >= 1:
+        message_to_broadcast = " ".join(args)
+        await broadcast_func(create_chat_message_packet(f"&e{message_to_broadcast}"))
+        
+    elif command == "/setspawn":
+        x, y, z = int(sender_player.x), int(sender_player.y), int(sender_player.z)
+        rot = int(sender_player.yaw)
+        
+        if set_spawn_pos(x, y, z, rot):
+            spawn_packet = create_set_spawn_position_packet(x, y, z, rot)
+            await broadcast_func(spawn_packet)
+            
+            await broadcast_func(create_chat_message_packet(f"&eSpawn point updated to ({x}, {y}, {z})."))
+        else:
+            await send_private_message(sender_player, "Failed to set spawn point.")
+            
+    elif command == "/unban" and len(args) == 1:
+        target_username = args[0]
+        if unban_user(target_username):
+            await send_private_message(sender_player, f"Player '{target_username}' unbanned.")
+            await broadcast_func(create_chat_message_packet(f"&e{target_username} was unbanned."))
+        else:
+            await send_private_message(sender_player, f"Player '{target_username}' is not banned.")
+
+    # --- /op <username> ---
+    elif command == "/op" and len(args) == 1:
+        target_username = args[0]
+        if add_admin(target_username):
+            await send_private_message(sender_player, f"Player '{target_username}' is now an operator.")
+        
+            target_player = find_player_by_username(target_username)
+            if target_player:
+                await send_private_message(target_player, "You are now an operator!")
+        else:
+            await send_private_message(sender_player, f"Player '{target_username}' is already an operator.")
+
+    # --- /deop <username> ---
+    elif command == "/deop" and len(args) == 1:
+        target_username = args[0]
+        if target_username.lower() == sender_player.username.lower():
+             await send_private_message(sender_player, "You cannot de-op yourself.")
+        elif remove_admin(target_username):
+            await send_private_message(sender_player, f"Player '{target_username}' is no longer an operator.")
+            target_player = find_player_by_username(target_username)
+            if target_player:
+                await send_private_message(target_player, "You are no longer an operator.")
+        else:
+            await send_private_message(sender_player, f"Player '{target_username}' is not an operator.")
+    # --- /tp <who> <where> or /tp <x> <y> <z>     
+    elif command == "/tp" or command == "/teleport":
+        if len(args) == 2:
+            tp_name = args[0]
+            target_name = args[1]
+            target_player = find_player_by_username(target_name)
+            tp_player = find_player_by_username(tp_name)
+            
+            if target_player:
+                sender_player.set_position(target_player.x, target_player.y, target_player.z, target_player.yaw, target_player.pitch)
+                
+                
+                teleport_packet = create_set_player_position_packet(
+                    tp_player.id, 
+                    target_player.x, target_player.y + 1.6, target_player.z,
+                    tp_player.yaw, tp_player.pitch, 1
+                )
+                
+                await safe_send(sender_player.ws, teleport_packet)
+                
+                await broadcast_func(teleport_packet, exclude_ws=sender_player.ws)
+                
+                await send_private_message(sender_player, f"{tp_player.username} teleported to {target_player.username}.")
+            else:
+                await send_private_message(sender_player, f"Player '{target_name}' not found.")
+                
+        elif len(args) == 3:
+            try:
+                x = float(args[0])
+                y = float(args[1])
+                z = float(args[2])
+                
+                sender_player.set_position(x, y, z, sender_player.yaw, sender_player.pitch)
+                
+                teleport_packet = create_set_player_position_packet(
+                    sender_player.id, x, y, z, sender_player.yaw, sender_player.pitch, 1
+                )
+                
+                await safe_send(sender_player.ws, teleport_packet)
+                await broadcast_func(teleport_packet, exclude_ws=sender_player.ws)
+                
+                await send_private_message(sender_player, f"Teleported to {x}, {y}, {z}.")
+            except ValueError:
+                await send_private_message(sender_player, "Invalid coordinates. Usage: /tp <x> <y> <z>")
+        else:
+            await send_private_message(sender_player, "Usage: /tp <player> OR /tp <x> <y> <z>")
+        
+    else:
+        await send_private_message(sender_player, "Unknown command or invalid arguments.")
+
+
+============================================================
+FILE: src\python\config.py
+============================================================
+
+import logging
+import os
+
+DEFAULT_CONFIG = {
+    "server-name": "CrossCraft Server",
+    "motd": "A CrossCraft Server",
+    "port": "25565",
+    "public": "true",
+    "verify-names": "true",
+    "max-players": "16",
+    "max-connections": "3",
+}
+
+CONFIG_ORDER = [
+    "server-name", "motd", "port", "public", "verify-names", 
+    "max-players", "max-connections"
+]
+
+CONFIG = {}
+
+def load_properties():
+    global CONFIG
+    
+    CONFIG = DEFAULT_CONFIG.copy()
+    
+    properties_file = "server.properties"
+    
+    if os.path.exists(properties_file):
+        try:
+            with open(properties_file, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and "=" in line and not line.startswith("#"):
+                        key, value = line.split("=", 1)
+                        CONFIG[key.strip()] = value.strip()
+            logging.info("Loaded server.properties")
+        except Exception as e:
+            logging.error(f"Failed to load server.properties: {e}")
+
+    try:
+        with open(properties_file, "w", encoding="utf-8") as f:
+            f.write("#Minecraft server properties\n")
+            f.write("#" +  str(os.path.getmtime(properties_file) if os.path.exists(properties_file) else "") + "\n")
+            
+            for key in CONFIG_ORDER:
+                value = CONFIG.get(key, DEFAULT_CONFIG.get(key, ""))
+                f.write(f"{key}={value}\n")
+                
+            for key, value in CONFIG.items():
+                if key not in CONFIG_ORDER:
+                    f.write(f"{key}={value}\n")
+                    
+        logging.info("Saved server.properties")
+    except Exception as e:
+        logging.error(f"Failed to save server.properties: {e}")
+
+def get_property(key):
+    return CONFIG.get(key, DEFAULT_CONFIG.get(key, ""))
+
+def get_int_property(key):
+    try:
+        return int(get_property(key))
+    except ValueError:
+        return int(DEFAULT_CONFIG.get(key, 0))
+
+def get_bool_property(key):
+    return get_property(key).lower() == "true"
+
+
+============================================================
+FILE: src\python\heartbeat.py
+============================================================
+
+import requests
+import time
+from config import *
+from player_manager import get_all_players
+
+HEARTBEAT_URL = "http://crosscraftweb.ddns.net/heartbeat.jsp"
+
+def send_heartbeat():
+    try:
+        payload = {
+            "name": get_property("server-name"),
+            "users": len(get_all_players()),
+            "max": get_int_property("max-players"),
+            "public": str(get_bool_property("public")).lower(),
+            "port": get_int_property("port"),
+        }
+        
+        response = requests.post(HEARTBEAT_URL, data=payload, timeout=10)
+        response.raise_for_status()
+        
+        logging.info(f"Heartbeat sent successfully. Status: OK")
+
+    except requests.exceptions.RequestException as e:
+        logging.warning(f"Could not send heartbeat to master server: {e}")
+    except Exception as e:
+        logging.error(f"An unexpected error occurred in send_heartbeat: {e}")
+
+def heartbeat_loop():
+    logging.info("Heartbeat thread started. Will send updates every 60 seconds")
+    while True:
+        send_heartbeat()
+        time.sleep(60)
+
+============================================================
+FILE: src\python\main.py
+============================================================
+
+import logging
+import threading
+import sys
+import requests
+from network import start_server, broadcast
+from world_manager import init_world, tick_world_loop, save_world_periodically, shutdown_server
+from config import load_properties, get_property, get_int_property
+from ban_manager import load_bans
+from heartbeat import heartbeat_loop, send_heartbeat
+from admin_manager import load_admins
+
+def get_public_ip():
+    try:
+        response = requests.get('https://api.ipify.org', timeout=5)
+        response.raise_for_status()
+        ip = response.text.strip()
+        logging.info(f"Successfully detected public IP: {ip}")
+        return ip
+    except requests.exceptions.RequestException as e:
+        logging.warning(f"Could not automatically detect public IP address: {e}")
+        logging.warning("externalurl.txt will contain a placeholder. You may need to enter your IP manually.")
+        return None
+
+if __name__ == "__main__":
+    load_properties()
+    load_bans()
+    load_admins()
+    
+    port = get_int_property("port")
+    public_ip = get_public_ip()
+    if not public_ip:
+        public_ip = "0.0.0.0"
+        
+    with open("externalurl.txt", "w") as f:
+        f.write(f"http://crosscraftweb.ddns.net/play.jsp?server={public_ip}&port={port}\n")
+    
+    log_format = '[%(asctime)s - %(threadName)s - %(levelname)s] %(message)s'
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+
+    if root_logger.hasHandlers():
+        root_logger.handlers.clear()
+
+    log_handler = logging.StreamHandler(sys.stdout)
+    log_handler.setFormatter(logging.Formatter(log_format))
+    root_logger.addHandler(log_handler)
+    
+    logging.info("Server is starting...")
+    init_world(256, 256, 64)
+    
+    tick_thread = threading.Thread(target=tick_world_loop, name="WorldTickThread", daemon=True)
+    tick_thread.start()
+    save_thread = threading.Thread(target=save_world_periodically, name="WorldSaveThread", daemon=True)
+    save_thread.start()
+    heartbeat_thread = threading.Thread(target=heartbeat_loop, name="HeartbeatThread", daemon=True)
+    heartbeat_thread.start()
+    logging.info("All background threads started.")
+    
+    try:
+        start_server()
+    finally:
+        shutdown_server()
+
+
+============================================================
+FILE: src\python\network.py
+============================================================
+
+import asyncio
+import websockets
+from websockets.http import Headers
+from websockets.typing import Subprotocol
+from websockets.server import ServerProtocol
+import logging
+from world_manager import get_compressed_world_data, set_block, set_callbacks, get_raw_world_data_from_cpp, get_spawn_pos
+from config import get_int_property, get_bool_property, get_property
+from ban_manager import is_user_banned, is_ip_banned
+from player_manager import add_player, remove_player, get_player, get_all_players, is_username_taken, validate_session, validate_username
+from command_handler import handle_command 
+from packets import *
+import gzip
+import time
+import random
+import requests
+
+CLIENTS = set()
+LAST_PACKET_TIME = {} 
+PACKET_COUNTS = {}
+
+async def safe_send(client_ws, message):
+    try:
+        await client_ws.send(message)
+    except websockets.exceptions.ConnectionClosed:
+        logging.debug(f"Failed to send message to already closed client {client_ws.remote_address}")
+        pass 
+
+async def broadcast(message, exclude_ws=None):
+    if CLIENTS:
+        tasks = []
+        for client in CLIENTS:
+            if client != exclude_ws:
+                task = asyncio.create_task(safe_send(client, message))
+                tasks.append(task)
+        if tasks:
+            await asyncio.gather(*tasks)
+            
+
+async def handler(websocket):
+    ip_address = websocket.remote_address[0]
+    if is_ip_banned(ip_address):
+        logging.warning(f"Connection refused for banned IP: {ip_address}")
+        await websocket.close(1000, "You are banned.")
+        return
+    
+    connections_from_this_ip = 0
+    for client_ws in CLIENTS:
+        if client_ws.remote_address[0] == ip_address:
+            connections_from_this_ip += 1
+            
+    max_conn = get_int_property("max-connections")
+    if connections_from_this_ip >= max_conn:
+        logging.warning(f"Connection refused for {ip_address}: connection limit ({max_conn}) exceeded.")
+        await websocket.close(1008, f"Connection limit from your IP ({max_conn}) exceeded.")
+        return
+
+    if len(CLIENTS) >= get_int_property("max-players"):
+        logging.warning("Connection refused: server is full.")
+        await websocket.close(1013, "Server is full!")
+        return
+
+    logging.info(f"Client connected from {websocket.remote_address}. Total clients: {len(CLIENTS) + 1}")
+    CLIENTS.add(websocket)
+    LAST_PACKET_TIME[websocket] = time.time()
+    PACKET_COUNTS[websocket] = 0
+    
+    player = None
+    try:
+        await websocket.send(create_server_identification_packet())
+        logging.info(f"-> Sent Server ID to {websocket.remote_address}")
+        
+        login_message = await websocket.recv()
+        username, session_id, protocol_v = parse_login_packet(login_message)
+        logging.info(f"[TEST PROTOCOL] {protocol_v}")
+        
+        if (protocol_v != PROTOCOL_VERSION):
+            await websocket.close(1002, f"Incompatible protocol version")
+        
+        should_verify = get_bool_property("verify-names")
+        
+        if should_verify:
+            if not username or not session_id:
+                logging.warning(f"Login failed: missing username or session_id (IP: {ip_address})")
+                await websocket.close(1002, "Authentication required.")
+                return
+            
+            is_valid, reason = validate_session(username, session_id)
+            if not is_valid:
+                logging.warning(f"Login rejected for '{username}': {reason}")
+                await websocket.close(1008, reason)
+                return
+            
+            try:
+                check_url = f"http://crosscraftweb.ddns.net/checkserver.jsp?user={username}&serverId={session_id}"
+                response = requests.get(check_url, timeout=5)
+                
+                if response.text.strip() != "YES":
+                    logging.warning(f"Login failed: Invalid session for {username}")
+                    await websocket.close(1002, "Invalid session.")
+                    return
+                    
+            except requests.RequestException:
+                logging.error("Failed to contact master server for verification.")
+                await websocket.close(1002, "Authentication server unavailable.")
+                return
+
+        else:
+            if not username:
+                username = f"Player{random.randint(100, 999)}"
+                session_id = ""
+            
+            if not validate_username(username):
+                 username = f"Player{random.randint(100, 999)}"
+            
+        logging.info(f"<- Login attempt from '{username}' ({websocket.remote_address})")
+        
+        if is_username_taken(username):
+            logging.warning(f"Connection refused for {username}: already logged in.")
+            await websocket.close(1008, "Someone with this username is already on the server!")
+            return
+        
+        if is_user_banned(username):
+            logging.warning(f"Connection refused for banned: {username}")
+            await websocket.close(1000, "You are banned.")
+        
+        player = add_player(websocket, username, session_id)
+        
+        join_message = f"&e{player.username} joined the game"
+        asyncio.create_task(broadcast(create_chat_message_packet(join_message)))
+        
+        await websocket.send(create_login_response_packet(player.username, player.id))
+        logging.info(f"-> Sent Login Response to {websocket.remote_address} (assigned name: {player.username})")
+        
+        for other_player in get_all_players():
+            if other_player.id != player.id:
+                spawn_packet = create_spawn_player_packet(
+                    other_player.id, other_player.username,
+                    other_player.x, other_player.y, other_player.z,
+                    other_player.yaw, other_player.pitch
+                )
+                await websocket.send(spawn_packet)
+
+        spawn_packet_for_others = create_spawn_player_packet(
+            player.id, player.username, 0, 0, 0, 0, 0
+        )
+        await broadcast(spawn_packet_for_others, exclude_ws=websocket)
+
+        compressed_data = get_raw_world_data_from_cpp()
+        await websocket.send(create_level_data_packet(256, 256, 64, compressed_data))
+        logging.info(f"-> Sent Level Data to {websocket.remote_address}")
+        
+        async for message in websocket:
+            current_time = time.time()
+            PACKET_COUNTS[websocket] += 1
+            if current_time - LAST_PACKET_TIME[websocket] > 1.0:
+                LAST_PACKET_TIME[websocket] = current_time
+                PACKET_COUNTS[websocket] = 0
+            
+            if PACKET_COUNTS[websocket] > 100:
+                logging.warning(f"Kicking {player.username} for spamming packets.")
+                await websocket.close(1008, "Kicked for spamming.")
+                return
+            packet_id = message[0]
+            logging.debug(f"<- RECV packet 0x{packet_id:02x} from {websocket.remote_address}")
+            
+            if packet_id == 0x02: # Block Change
+                parsed_data = parse_block_change_packet(message)
+                if parsed_data:
+                    x, y, z, block_type, placed = parsed_data
+                    new_block_type = block_type if placed else 0
+                    
+                    set_block(x, y, z, new_block_type)
+                else:
+                    logging.warning("Failed to parse Block Change packet.")
+                    
+            elif packet_id == 0x21: # Player Position
+                # logging.info(f"Handling PLAYER_POSITION for player {player.id}")
+                pos_data = parse_position_packet(message)
+                if pos_data and player:
+                    x, y, z, yaw, pitch = pos_data
+                    player.set_position(x, y, z, yaw, pitch)
+                    
+                    update_packet = create_set_player_position_packet(
+                        player.id, x, y, z, yaw, pitch
+                    )
+                    asyncio.create_task(broadcast(update_packet, exclude_ws=websocket))
+            elif packet_id == 0x24: # Request Spawn Position
+                logging.info(f"<- Received Spawn Position Request from {player.username}")
+                spawn_pos = get_spawn_pos()
+                if spawn_pos:
+                    response_packet = create_set_spawn_position_packet(
+                        spawn_pos.x, spawn_pos.y, spawn_pos.z, spawn_pos.rot
+                    )
+                    await websocket.send(response_packet)
+                    logging.info(f"-> Sent Spawn Position to {player.username}")
+                    
+            elif packet_id == 0x31: # Send chat message
+                chat_text = parse_chat_message_packet(message)
+                if chat_text and player:
+                    
+                    if chat_text.startswith('/'):
+                        await handle_command(player, chat_text, broadcast)
+                    else:
+                        formatted_message = f"{player.username}: {chat_text}"
+                        logging.info(f"[CHAT] {formatted_message}")
+                        
+                        response_packet = create_chat_message_packet(formatted_message)
+                        asyncio.create_task(broadcast(response_packet))
+
+    except websockets.exceptions.ConnectionClosed as e:
+        logging.info(f"Client {websocket.remote_address} disconnected (code: {e.code})")
+    except Exception as e:
+        logging.error(f"An error occurred with client {websocket.remote_address}: {e}", exc_info=True)
+    finally:
+        if websocket in LAST_PACKET_TIME: del LAST_PACKET_TIME[websocket]
+        if websocket in PACKET_COUNTS: del PACKET_COUNTS[websocket]
+        player = remove_player(websocket)
+        if player:
+            left_message = f"&e{player.username} left the game"
+            asyncio.create_task(broadcast(create_chat_message_packet(left_message)))
+            logging.info(f"Broadcasting despawn for player {player.id}")
+            despawn_packet = create_despawn_player_packet(player.id)
+            
+            await broadcast(despawn_packet, exclude_ws=websocket)
+        
+        CLIENTS.remove(websocket)
+        logging.info(f"Client {websocket.remote_address} removed. Total clients: {len(CLIENTS)}")
+
+def start_server():  
+    async def main():
+        loop = asyncio.get_running_loop()
+        set_callbacks(broadcast, loop)
+        
+        async with websockets.serve(handler, get_property('server-ip'), get_property('port')):
+            logging.info(f"✅ Server started on ws://{get_property('server-ip')}:{get_property('port')}")
+            await asyncio.Future()
+
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logging.info("Server is shutting down.")
+
+
+============================================================
+FILE: src\python\packets.py
+============================================================
+
+import struct
+from config import *
+
+PROTOCOL_VERSION = 3
+
+
+def create_server_identification_packet():
+    packet_id = 0x11
+    name_bytes = get_property('server-name').encode('utf-8')
+    motd_bytes = get_property('motd').encode('utf-8')
+    
+    packet_data = struct.pack('!B', PROTOCOL_VERSION) + \
+                  struct.pack('!h', len(name_bytes)) + name_bytes + \
+                  struct.pack('!h', len(motd_bytes)) + motd_bytes
+    
+    return struct.pack('!B', packet_id) + packet_data
+
+def create_login_response_packet(username, playerId):
+    packet_id = 0x10
+    name_bytes = username.encode('utf-8')
+    
+    packet_data = struct.pack('!bh', playerId, len(name_bytes)) + name_bytes
+    
+    return struct.pack('!B', packet_id) + packet_data
+
+def create_level_data_packet(width, height, depth, compressed_world_data):
+    if not compressed_world_data:
+        raise ValueError("World data for packet is not available.")
+        
+    header = struct.pack('!hhh', width, height, depth) + \
+             struct.pack('!i', len(compressed_world_data))
+             
+    return struct.pack('!B', 0x12) + header + compressed_world_data
+
+def create_block_update_packet(x, y, z, block_type):
+    packet_id = 0x17
+    packet_data = struct.pack('!iiiB', x, y, z, block_type)
+    return struct.pack('!B', packet_id) + packet_data
+
+
+def parse_block_change_packet(message):
+    try:
+        x, y, z, block_type, placed_byte = struct.unpack('!iiiB?', message[1:])
+        return x, y, z, block_type, bool(placed_byte)
+    except struct.error as e:
+        return None
+
+def create_spawn_player_packet(player_id, username, x, y, z, yaw, pitch):
+    packet_id = 0x20
+    name_bytes = username.encode('utf-8')
+    packet_data = struct.pack('!B', player_id) + \
+                  struct.pack('!h', len(name_bytes)) + name_bytes + \
+                  struct.pack('!fffff', x, y, z, yaw, pitch)
+    return struct.pack('!B', packet_id) + packet_data
+
+def create_set_player_position_packet(player_id, x, y, z, yaw, pitch, type=0):
+    packet_id = 0x21
+    packet_data = struct.pack('!bbfffff', player_id, type, x, y, z, yaw, pitch)
+    return struct.pack('!B', packet_id) + packet_data
+
+def create_despawn_player_packet(player_id):
+    packet_id = 0x22
+    return struct.pack('!BB', packet_id, player_id)
+
+def parse_position_packet(message):
+    try:
+        _player_id, _type, x, y, z, yaw, pitch = struct.unpack('!bbfffff', message[1:])
+        return x, y, z, yaw, pitch
+    except struct.error:
+        return None
+    
+def create_set_spawn_position_packet(x, y, z, yaw):
+    packet_id = 0x23
+    packet_data = struct.pack('!ihii', x, y, z, yaw)
+    return struct.pack('!B', packet_id) + packet_data
+
+def parse_request_spawn_position_packet(message):
+    if message[0] == 0x24:
+        return True
+    return False
+
+def parse_login_packet(message):
+    try:
+        offset = 1
+        protocol_v = struct.unpack('!b', message[offset:offset+1])[0]
+        offset += 1
+        
+        name_len = struct.unpack('!h', message[offset:offset+2])[0]
+        offset += 2
+        
+        username = message[offset:offset+name_len].decode('utf-8')
+        offset += name_len
+        
+        session_len = struct.unpack('!h', message[offset:offset+2])[0]
+        offset += 2
+        
+        session_id = message[offset:offset+session_len].decode('utf-8')
+        
+        return username, session_id, int(protocol_v)
+    except (struct.error, IndexError, UnicodeDecodeError) as e:
+        logging.error(f"Failed to parse login packet: {e}")
+        return None, None
+    
+def create_chat_message_packet(message_text):
+    packet_id = 0x30
+    message_bytes = message_text.encode('utf-8')
+    if len(message_bytes) > 256: 
+        message_bytes = message_bytes[:256]
+        
+    packet_data = struct.pack('!h', len(message_bytes)) + message_bytes
+    return struct.pack('!B', packet_id) + packet_data
+
+def parse_chat_message_packet(message):
+    try:
+        offset = 1
+        msg_len = struct.unpack('!h', message[offset:offset+2])[0]
+        offset += 2
+        
+        if msg_len > 64: 
+            msg_len = 64
+            
+        message_text = message[offset:offset+msg_len].decode('utf-8')
+        return message_text
+    except Exception as e:
+        logging.error(f"Failed to parse chat message packet: {e}")
+        return None
+
+============================================================
+FILE: src\python\player_manager.py
+============================================================
+
+import logging
+import re
+import os
+
+class Player:
+    def __init__(self, websocket, player_id, username):
+        self.ws = websocket
+        self.id = player_id
+        self.username = username
+        self.x = 0.0
+        self.y = 0.0
+        self.z = 0.0
+        self.yaw = 0.0
+        self.pitch = 0.0
+
+    def set_position(self, x, y, z, yaw, pitch):
+        self.x, self.y, self.z = x, y, z
+        self.yaw, self.pitch = yaw, pitch
+
+PLAYERS = {}
+SESSIONS = {}
+next_player_id = 1
+
+def update_logged_in_file():
+    try:
+        with open("logged-in.txt", "w", encoding="utf-8") as f:
+            for player in PLAYERS.values():
+                f.write(f"{player.username}\n")
+    except IOError as e:
+        logging.error(f"Failed to update logged-in.txt: {e}")
+
+def get_all_players():
+    return len(PLAYERS)
+
+def is_username_taken(username):
+    lower_username = username.lower()
+    for player in PLAYERS.values():
+        if player.username.lower() == lower_username:
+            return True
+    return False
+
+def validate_session(username, session_id):
+    if not session_id or len(session_id) < 16:
+        return False, "Invalid session ID."
+        
+    if session_id in SESSIONS and SESSIONS[session_id].lower() != username.lower():
+        return False, "Session ID is already in use by another player."
+        
+    return True, ""
+
+def validate_username(username):
+    if len(username) < 2 or len(username) > 16:
+        return False
+    if not re.match(r"^[a-zA-Z0-9_-]+$", username):
+        return False
+    return True
+
+def add_player(websocket, username, session_id):
+    global next_player_id
+    player_id = next_player_id
+    next_player_id += 1
+    
+    new_player = Player(websocket, player_id, username)
+    PLAYERS[websocket] = new_player
+    SESSIONS[session_id] = username
+    update_logged_in_file()
+    logging.info(f"Player '{username}' (ID: {player_id}) added to the game.")
+    return new_player
+
+def remove_player(websocket):
+    if websocket in PLAYERS:
+        player = PLAYERS.pop(websocket)
+        session_to_remove = None
+        for sid, uname in SESSIONS.items():
+            if uname.lower() == player.username.lower():
+                session_to_remove = sid
+                break
+        if session_to_remove:
+            del SESSIONS[session_to_remove]   
+        update_logged_in_file()
+        logging.info(f"Player '{player.username}' (ID: {player.id}) removed.")
+        return player
+    return None
+
+def get_player(websocket):
+    return PLAYERS.get(websocket)
+
+def get_all_players():
+    return list(PLAYERS.values())
+
+def find_player_by_username(username):
+    lower_username = username.lower()
+    for player in PLAYERS.values():
+        if player.username.lower() == lower_username:
+            return player
+    return None
+
+
+============================================================
+FILE: src\python\world_manager.py
+============================================================
+
+import ctypes
+import logging
+import platform
+import asyncio
+import gzip
+import time
+import os
+
+WORLD_DATA_COMPRESSED = None
+
+lib_name = "core.so" if platform.system() != "Windows" else "core.dll"
+
+try:
+    core_lib = ctypes.CDLL(f'./{lib_name}')
+except OSError as e:
+    logging.error(f"FATAL: Could not load core library '{lib_name}'. Make sure it's in the same directory. Error: {e}")
+    exit(1)
+
+class WorldData(ctypes.Structure):
+    _fields_ = [("blocks", ctypes.POINTER(ctypes.c_uint8)),
+                ("size", ctypes.c_size_t)]
+    
+class SpawnPosition(ctypes.Structure):
+    _fields_ = [("x", ctypes.c_int),
+                ("y", ctypes.c_int),
+                ("z", ctypes.c_int),
+                ("rot", ctypes.c_int)]
+
+try:
+    core_lib.create_world_generator.restype = ctypes.c_void_p
+
+    core_lib.generate_world.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_int]
+    core_lib.generate_world.restype = WorldData
+
+    core_lib.free_world_data.argtypes = [WorldData]
+
+    core_lib.destroy_world_generator.argtypes = [ctypes.c_void_p]
+    
+    logging.info(f"✅ Successfully loaded and configured '{lib_name}'")
+
+except AttributeError as e:
+    logging.error(f"FATAL: A function is missing in the C++ core library. Did you implement all API functions? Error: {e}")
+    exit(1)
+
+def get_compressed_world_data():
+    return WORLD_DATA_COMPRESSED
+
+BLOCK_CHANGED_CALLBACK = ctypes.CFUNCTYPE(None, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int)
+
+core_lib.set_block_changed_callback.argtypes = [ctypes.c_void_p, BLOCK_CHANGED_CALLBACK]
+core_lib.tick_world.argtypes = [ctypes.c_void_p]
+core_lib.set_block.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int]
+core_lib.save_world_to_file.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+core_lib.save_world_to_file.restype = ctypes.c_bool
+core_lib.load_world_from_file.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+core_lib.load_world_from_file.restype = ctypes.c_bool
+core_lib.get_world_data.argtypes = [ctypes.c_void_p]
+core_lib.get_world_data.restype = WorldData
+core_lib.get_spawn_position.argtypes = [ctypes.c_void_p]
+core_lib.get_spawn_position.restype = SpawnPosition
+core_lib.set_spawn_position.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int]
+core_lib.set_spawn_position.restype = None
+
+WORLD_INSTANCE = None
+BROADCAST_FUNCTION = None
+MAIN_EVENT_LOOP = None
+
+def init_world(width, height, depth):
+    global WORLD_INSTANCE, WORLD_DATA_COMPRESSED
+    if WORLD_INSTANCE is not None:
+        return
+    
+    logging.info("Creating and generating world via C++ core...")
+    WORLD_INSTANCE = core_lib.create_world_generator()
+    
+    if not WORLD_INSTANCE:
+        logging.error("FATAL: Failed to create C++ world instance.")
+        exit(1)
+
+    if core_lib.load_world_from_file(WORLD_INSTANCE, b"level.dat"):
+        logging.info("Successfully loaded world from level.dat.")
+    else:
+        logging.warning("level.dat not found or failed to load, generating a new world.")
+        try:
+            logging.info(f"Generating a {width}x{height}x{depth} world...")
+            world_struct = core_lib.generate_world(WORLD_INSTANCE, width, height, depth)
+            
+            if not world_struct.blocks or world_struct.size == 0:
+                raise ValueError("C++ core returned an empty world.")
+
+            level_bytes = ctypes.string_at(world_struct.blocks, world_struct.size)
+            core_lib.free_world_data(world_struct)
+            
+            logging.info(f"World generated ({len(level_bytes)} bytes). Compressing with gzip...")
+            WORLD_DATA_COMPRESSED = gzip.compress(level_bytes)
+            logging.info(f"World cached successfully. Compressed size: {len(WORLD_DATA_COMPRESSED)} bytes")
+        except Exception as e:
+            logging.error(f"An error occurred during world generation: {e}")
+            core_lib.destroy_world_generator(WORLD_INSTANCE)
+            WORLD_INSTANCE = None
+            exit(1)
+    
+    def on_block_changed_from_cpp(x, y, z, block_type):
+        if BROADCAST_FUNCTION and MAIN_EVENT_LOOP:
+            from packets import create_block_update_packet
+            
+            update_packet = create_block_update_packet(x, y, z, block_type)
+            
+            MAIN_EVENT_LOOP.call_soon_threadsafe(
+                asyncio.create_task, BROADCAST_FUNCTION(update_packet)
+            )
+    
+    callback_ptr = BLOCK_CHANGED_CALLBACK(on_block_changed_from_cpp)
+    core_lib.set_block_changed_callback(WORLD_INSTANCE, callback_ptr)
+    
+    setattr(core_lib, '_callback_ptr', callback_ptr)
+    
+def get_raw_world_data_from_cpp():
+    if not WORLD_INSTANCE:
+        logging.error("Attempted to get world data before world was initialized.")
+        return None
+        
+    world_struct = core_lib.get_world_data(WORLD_INSTANCE)
+    if not world_struct.blocks or world_struct.size == 0:
+        logging.error("C++ core returned empty world data for packet.")
+        return None
+        
+    try:
+        level_bytes = ctypes.string_at(world_struct.blocks, world_struct.size)
+        compressed_data = gzip.compress(level_bytes)
+        return compressed_data
+    finally:
+        core_lib.free_world_data(world_struct)
+    
+def set_callbacks(broadcast_func, loop):
+    global BROADCAST_FUNCTION, MAIN_EVENT_LOOP
+    BROADCAST_FUNCTION = broadcast_func
+    MAIN_EVENT_LOOP = loop
+    logging.info("Callbacks and event loop have been set for the C++ core.")
+
+def set_broadcast_function(func):
+    global BROADCAST_FUNCTION
+    BROADCAST_FUNCTION = func
+
+def tick_world_loop():
+    while True:
+        if WORLD_INSTANCE:
+            core_lib.tick_world(WORLD_INSTANCE)
+        time.sleep(1/20.0)
+
+def set_block(x, y, z, block_type):
+    if WORLD_INSTANCE:
+        core_lib.set_block(WORLD_INSTANCE, x, y, z, block_type)
+        
+def save_world_periodically():
+    while True:
+        time.sleep(300)
+        if WORLD_INSTANCE:
+            logging.info("Periodically saving world to level.dat...")
+            if core_lib.save_world_to_file(WORLD_INSTANCE, b"level.dat"):
+                logging.info("World saved successfully.")
+            else:
+                logging.error("Failed to save world.")
+                
+def shutdown_server():
+    os.remove("./externalurl.txt");
+    if WORLD_INSTANCE:
+        logging.info("Shutting down. Saving final world state...")
+        if core_lib.save_world_to_file(WORLD_INSTANCE, b"level.dat"):
+            logging.info("Final world state saved.")
+        else:
+            logging.error("Failed to save final world state.")
+            
+def get_spawn_pos():
+    if WORLD_INSTANCE:
+        return core_lib.get_spawn_position(WORLD_INSTANCE)
+    return None
+
+def set_spawn_pos(x, y, z, rot):
+    if WORLD_INSTANCE:
+        core_lib.set_spawn_position(WORLD_INSTANCE, x, y, z, rot)
+        core_lib.save_world_to_file(WORLD_INSTANCE, b"level.dat") 
+        return True
+    return False

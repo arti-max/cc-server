@@ -7,6 +7,7 @@
 #include <functional>
 #include "util/Random.hpp"
 
+class Server;
 class Entity;
 
 struct TickEntry {
@@ -45,6 +46,8 @@ public:
     std::string name;
     std::string creator;
     long long creationTime = 0;
+
+    Server* server = nullptr;
 
     int xSpawn;
     int ySpawn;
