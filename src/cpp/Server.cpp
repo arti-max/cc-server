@@ -358,6 +358,9 @@ void Server::onPacket(int clientId, Packet& packet) {
         case Protocol::Opcode::REQUEST_SPAWN_POSITION:
             handleRequestSpawn(clientId);
             break;
+        case Protocol::Opcode::REQUEST_LEVEL_DATA:
+            handleRequestLevel(clientId);
+            break;
         default:
             Logger::logf(PREFIX_WARNING, "Unhandled packet 0x%02X\n", (uint8_t)type);
             break;
@@ -427,20 +430,6 @@ void Server::handleLogin(int clientId, Packet& packet) {
         network->sendPacket(clientId, resp);
     }
 
-    // Level Data (0x12)
-    {
-        Logger::log(PREFIX_CC, "Compressing level data...\n");
-        std::vector<uint8_t> compressed = gzipCompress(level->getBlocks());
-        
-        Packet levelPkt(Protocol::Opcode::LEVEL_DATA);
-        levelPkt.writeShort(level->width);
-        levelPkt.writeShort(level->height);
-        levelPkt.writeShort(level->depth);
-        levelPkt.writeByteArray(compressed);
-        network->sendPacket(clientId, levelPkt);
-        Logger::logf(PREFIX_CC, "Sent level data (%d bytes compressed)\n", compressed.size());
-    }
-
     // Spawn Existing Players for New Player (0x20)
     for (auto& other : players) {
         if (other && other->loggedIn && other->id != clientId) {
@@ -483,7 +472,19 @@ void Server::handleLogin(int clientId, Packet& packet) {
     }
 }
 
-
+void Server::handleRequestLevel(int clientId) {
+    // Level Data (0x12)
+    Logger::log(PREFIX_CC, "Compressing level data...\n");
+    std::vector<uint8_t> compressed = gzipCompress(level->getBlocks());
+    
+    Packet levelPkt(Protocol::Opcode::LEVEL_DATA);
+    levelPkt.writeShort(level->width);
+    levelPkt.writeShort(level->height);
+    levelPkt.writeShort(level->depth);
+    levelPkt.writeByteArray(compressed);
+    network->sendPacket(clientId, levelPkt);
+    Logger::logf(PREFIX_CC, "Sent level data (%d bytes compressed)\n", compressed.size());
+}
 
 void Server::handleBlockChange(int clientId, Packet& packet) {
     

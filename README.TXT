@@ -75,6 +75,11 @@ Most commands can also be typed directly into the server console (stdin).
 
 ## Changelog:
 
+Version 1.6.1
+
++ /say command fixed
++ Fixed level data request
+
 Version 1.6
 
 + Rewrote the entire server in C++ for better performance and stability

@@ -22,6 +22,7 @@ namespace Protocol {
         DESPAWN_PLAYER          = 0x22,
         SET_SPAWN_POSITION      = 0x23,
         REQUEST_SPAWN_POSITION  = 0x24,
+        REQUEST_LEVEL_DATA      = 0x25,
 
         SERVER_CHAT_MESSAGE     = 0x30,
         CLIENT_CHAT_MESSAGE     = 0x31,

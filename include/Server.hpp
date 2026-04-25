@@ -83,6 +83,7 @@ private:
     void handlePosition(int clientId, Packet& packet);
     void handleChat(int clientId, Packet& packet);
     void handleRequestSpawn(int clientId);
+    void handleRequestLevel(int clientId);
 
 
     //Login
