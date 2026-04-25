@@ -64,6 +64,7 @@ public:
     
     void sendMsgToPlayer(int clientId, std::string msg);
     void sendPacketToAll(Packet p);
+    void sendMsgToAll(std::string msg);
     std::string getSalt();
     void toggleSolid();
     bool getSolid();

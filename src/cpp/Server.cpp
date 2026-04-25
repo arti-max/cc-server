@@ -590,6 +590,16 @@ void Server::sendMsgToPlayer(int clientId, std::string msg) {
     }
 }
 
+void Server::sendMsgToAll(std::string msg) {
+    Packet chat(Protocol::Opcode::SERVER_CHAT_MESSAGE);
+    chat.writeString(msg);
+    for (auto& other : players) { 
+        if (other && other->loggedIn) {
+            network->sendPacket(other->id, chat);
+        }
+    }
+}
+
 void Server::handleRequestSpawn(int clientId) {
     // 0x24 request -> 0x23 response
     

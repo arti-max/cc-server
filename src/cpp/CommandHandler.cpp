@@ -12,9 +12,7 @@ bool CommandHandler::executeCommand(std::string& text, int clientId, bool consol
             returnText += parts[i] + " ";
         }
         this->privateText = false;
-        Packet chat(Protocol::Opcode::SERVER_CHAT_MESSAGE);
-        chat.writeString("&e" + returnText);
-        server->sendPacketToAll(chat);
+        server->sendMsgToAll("&e" + returnText);
         returnText = "";
         return true;
     }
