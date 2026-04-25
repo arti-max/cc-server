@@ -78,6 +78,7 @@ Most commands can also be typed directly into the server console (stdin).
 Version 1.6
 
 + Rewrote the entire server in C++ for better performance and stability
++ Fixed falling phantom blocks on client
 + Added /op, /deop, /kick, /ban, /unban, /banip, /say, /setspawn, /tp, /solid commands
 + Server console input (stdin) for admin commands
 + Public server listing via heartbeat (with unique salt)
