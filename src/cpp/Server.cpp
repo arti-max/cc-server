@@ -409,7 +409,7 @@ void Server::handleLogin(int clientId, Packet& packet) {
 
     auto newPlayer = std::make_shared<Player>(clientId, username);
     newPlayer->sessionId = session;
-    newPlayer->loggedIn = true;
+    newPlayer->loggedIn = false;
     newPlayer->x = (float)level->xSpawn;
     newPlayer->y = (float)level->ySpawn;
     newPlayer->z = (float)level->zSpawn;
@@ -462,14 +462,6 @@ void Server::handleLogin(int clientId, Packet& packet) {
             }
         }
     }
-    // Chat Join Message
-    {
-        Packet chat(Protocol::Opcode::SERVER_CHAT_MESSAGE); 
-        chat.writeString("&e" + username + " joined the game");
-        for (auto& other : players) {
-             if (other && other->loggedIn) network->sendPacket(other->id, chat);
-        }
-    }
 }
 
 void Server::handleRequestLevel(int clientId) {
@@ -484,6 +476,8 @@ void Server::handleRequestLevel(int clientId) {
     levelPkt.writeByteArray(compressed);
     network->sendPacket(clientId, levelPkt);
     Logger::logf(PREFIX_CC, "Sent level data (%d bytes compressed)\n", compressed.size());
+
+    players[clientId]->loggedIn = true;
 }
 
 void Server::handleBlockChange(int clientId, Packet& packet) {
@@ -611,6 +605,15 @@ void Server::handleRequestSpawn(int clientId) {
     resp.writeInt(level->rotSpawn);
 
     network->sendPacket(clientId, resp);
+
+    // Chat Join Message
+    {
+        Packet chat(Protocol::Opcode::SERVER_CHAT_MESSAGE); 
+        chat.writeString("&e" + this->getClientUsername(clientId) + " joined the game");
+        for (auto& other : players) {
+             if (other && other->loggedIn) network->sendPacket(other->id, chat);
+        }
+    }
 }
 
 // Login methods:
