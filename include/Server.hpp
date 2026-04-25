@@ -46,6 +46,8 @@ public:
     std::unique_ptr<Timer> timer;
     std::unique_ptr<Network> network;
 
+    std::mutex playersMutex;
+
     bool start();
     void stop();
 

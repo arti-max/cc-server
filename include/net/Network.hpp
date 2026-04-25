@@ -81,20 +81,10 @@ private:
     SocketType listenSocket;
     std::atomic<bool> running;
 
+    std::mutex sessionsMutex; 
+    bool sendAllLocked(SocketType sock, const void* data, size_t len);
+
     // Массив сессий. ID клиента = индекс в массиве (0..127)
     std::vector<std::unique_ptr<ClientSession>> sessions; 
     std::unordered_map<std::string, int> ipConnectionCount;
-
-    bool sendAll(SocketType sock, const void* data, size_t len) {
-        const uint8_t* ptr = (const uint8_t*)data;
-        size_t totalSent = 0;
-        while (totalSent < len) {
-            int chunk = send(sock, (const char*)(ptr + totalSent), (int)(len - totalSent), 0);
-            if (chunk <= 0) {
-                return false;
-            }
-            totalSent += chunk;
-        }
-        return true;
-    }
 };

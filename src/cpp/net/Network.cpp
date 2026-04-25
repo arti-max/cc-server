@@ -14,6 +14,14 @@
     #pragma comment(lib, "Ws2_32.lib")
 #endif
 
+void closeSocket(SocketType sock) {
+#ifdef _WIN32
+    closesocket(sock);
+#else
+    close(sock);
+#endif
+}
+
 Network::Network(int port, INetworkHandler* handler) 
     : port(port), handler(handler), listenSocket(INVALID_SOCKET), running(false) 
 {
@@ -325,22 +333,19 @@ void Network::handleClientData(ClientSession& session) {
 }
 
 void Network::sendPacket(int clientId, const Packet& packet) {
-    if (clientId < 0 || clientId >= 128 || !sessions[clientId] || !sessions[clientId]->active || sessions[clientId]->state != SessionState::CONNECTED) {
+    std::lock_guard<std::mutex> lock(sessionsMutex);   // защищаем доступ к sessions
+
+    if (clientId < 0 || clientId >= sessions.size() || !sessions[clientId] || !sessions[clientId]->active || sessions[clientId]->state != SessionState::CONNECTED) {
         return;
     }
-    
-    // Данные пакета
+
     const std::vector<uint8_t>& rawData = packet.getData();
     size_t payloadLen = rawData.size();
 
-    // Формируем WebSocket фрейм (Server -> Client, без маски)
     std::vector<uint8_t> frame;
     frame.reserve(payloadLen + 10);
+    frame.push_back(0x82); // FIN + Binary
 
-    // FIN + Binary Opcode (0x82)
-    frame.push_back(0x82);
-
-    // Payload Length
     if (payloadLen <= 125) {
         frame.push_back((uint8_t)payloadLen);
     } else if (payloadLen <= 65535) {
@@ -353,17 +358,19 @@ void Network::sendPacket(int clientId, const Packet& packet) {
             frame.push_back((payloadLen >> (i * 8)) & 0xFF);
         }
     }
-
-    // Данные
     frame.insert(frame.end(), rawData.begin(), rawData.end());
 
-    // Отправляем
-    if (!sendAll(sessions[clientId]->socket, frame.data(), frame.size())) {
-        disconnectClient(clientId, "Send error", 1011);
+    // Гарантированно отправляем все байты
+    bool ok = sendAllLocked(sessions[clientId]->socket, frame.data(), frame.size());
+    if (!ok) {
+        SocketType sock = sessions[clientId]->socket;
+        closeSocket(sock);
+        sessions[clientId]->active = false;
     }
 }
 
 void Network::disconnectClient(int clientId, const std::string& reason, uint16_t code) {
+    std::lock_guard<std::mutex> lock(sessionsMutex);
     if (clientId < 0 || clientId >= 128 || !sessions[clientId] || !sessions[clientId]->active) return;
 
 
@@ -428,4 +435,17 @@ std::string Network::getClientIp(int clientId) {
             return s->ip;
         }
     }
+}
+
+bool Network::sendAllLocked(SocketType sock, const void* data, size_t len) {
+    const uint8_t* ptr = (const uint8_t*)data;
+    size_t totalSent = 0;
+    while (totalSent < len) {
+        int chunk = send(sock, (const char*)(ptr + totalSent), (int)(len - totalSent), 0);
+        if (chunk <= 0) {
+            return false;   // ошибка или разрыв соединения
+        }
+        totalSent += chunk;
+    }
+    return true;
 }
