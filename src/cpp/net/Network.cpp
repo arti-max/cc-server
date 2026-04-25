@@ -358,7 +358,9 @@ void Network::sendPacket(int clientId, const Packet& packet) {
     frame.insert(frame.end(), rawData.begin(), rawData.end());
 
     // Отправляем
-    send(sessions[clientId]->socket, (const char*)frame.data(), (int)frame.size(), 0);
+    if (!sendAll(sessions[clientId]->socket, frame.data(), frame.size())) {
+        disconnectClient(clientId, "Send error", 1011);
+    }
 }
 
 void Network::disconnectClient(int clientId, const std::string& reason, uint16_t code) {
