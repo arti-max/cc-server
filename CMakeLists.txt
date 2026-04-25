@@ -24,7 +24,6 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(curl)
 
 find_package(CURL REQUIRED)
-find_package(OpenSSL REQUIRED)
 
 # Папки заголовков
 include_directories(include)
@@ -39,7 +38,6 @@ add_executable(CrossCraftServer ${SOURCES})
 
 # --- Зависимости ---
 target_link_libraries(CrossCraftServer CURL::libcurl)
-target_link_libraries(CrossCraftServer OpenSSL::SSL OpenSSL::Crypto)
 
 if(WIN32)
     target_link_libraries(CrossCraftServer ws2_32)

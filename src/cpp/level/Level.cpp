@@ -214,6 +214,10 @@ bool Level::setTile(int x, int y, int z, int type) {
     }
     
     blocks[index] = static_cast<uint8_t>(type);
+
+    if (this->server != nullptr) {
+        this->server->sendBlockUpdate(x, y, z, type);
+    }
     
     if (type > 0 && Tile::tiles[type] != nullptr) {
         Tile::tiles[type]->onBlockAdded(this, x, y, z);
@@ -227,10 +231,6 @@ bool Level::setTile(int x, int y, int z, int type) {
     neighborChanged(x, y, z + 1, type);
     
     calcLightDepths(x, z, 1, 1);
-
-    if (this->server != nullptr) {
-        this->server->sendBlockUpdate(x, y, z, type);
-    }
     
     // if (blockChangedListener) {
     //     blockChangedListener(x, y, z, type);
@@ -267,10 +267,10 @@ void Level::swap(int x1, int y1, int z1, int x2, int y2, int z2) {
     setTileNoUpdate(x1, y1, z1, tile2);
     setTileNoUpdate(x2, y2, z2, tile1);
 
-    if (this->server != nullptr) {
-        this->server->sendBlockUpdate(x1, y1, z1, tile2);
-        this->server->sendBlockUpdate(x2, y2, z2, tile1);
-    }
+    // if (this->server != nullptr) {
+    //     this->server->sendBlockUpdate(x1, y1, z1, tile2);
+    //     this->server->sendBlockUpdate(x2, y2, z2, tile1);
+    // }
 
     neighborChanged(x1 - 1, y1, z1, tile2);
     neighborChanged(x1 + 1, y1, z1, tile2);

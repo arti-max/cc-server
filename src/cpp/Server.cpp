@@ -506,9 +506,9 @@ void Server::handleBlockChange(int clientId, Packet& packet) {
     }
 
     level->setTile(x, y, z, finalType);
-    if (finalType == Tile::sand->id || finalType == Tile::gravel->id) {
-        this->sendBlockUpdate(x, y, z, 0);
-    }
+    // if ((finalType == Tile::sand->id || finalType == Tile::gravel->id) && level->getTile(x, y-1, z) == 0) {
+    //     this->sendBlockUpdate(x, y, z, 0);
+    // }
     
 }
 
