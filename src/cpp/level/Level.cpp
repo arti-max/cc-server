@@ -267,6 +267,11 @@ void Level::swap(int x1, int y1, int z1, int x2, int y2, int z2) {
     setTileNoUpdate(x1, y1, z1, tile2);
     setTileNoUpdate(x2, y2, z2, tile1);
 
+    if (this->server != nullptr) {
+        this->server->sendBlockUpdate(x1, y1, z1, tile2);
+        this->server->sendBlockUpdate(x2, y2, z2, tile1);
+    }
+
     neighborChanged(x1 - 1, y1, z1, tile2);
     neighborChanged(x1 + 1, y1, z1, tile2);
     neighborChanged(x1, y1 - 1, z1, tile2);
