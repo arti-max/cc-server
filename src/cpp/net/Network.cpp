@@ -442,8 +442,23 @@ bool Network::sendAllLocked(SocketType sock, const void* data, size_t len) {
     size_t totalSent = 0;
     while (totalSent < len) {
         int chunk = send(sock, (const char*)(ptr + totalSent), (int)(len - totalSent), 0);
-        if (chunk <= 0) {
-            return false;   // ошибка или разрыв соединения
+        if (chunk < 0) {
+#ifdef _WIN32
+            int err = WSAGetLastError();
+            if (err == WSAEWOULDBLOCK) {
+                Sleep(1);          // подождать 1 мс и попробовать снова
+                continue;
+            }
+#else
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                usleep(1000);      // 1 мс
+                continue;
+            }
+#endif
+            return false;         // критическая ошибка
+        }
+        if (chunk == 0) {
+            return false;         // соединение закрыто
         }
         totalSent += chunk;
     }
