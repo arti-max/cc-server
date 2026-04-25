@@ -22,7 +22,7 @@ public:
     CommandHandler(Server* server);
     ~CommandHandler();
 
-    bool executeCommand(std::string& text, int clientId);
+    bool executeCommand(std::string& text, int clientId, bool console = false);
     std::string getReturnText();
     bool getTextVisible();
 };

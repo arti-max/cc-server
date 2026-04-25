@@ -15,6 +15,7 @@
 #include "util/HTTPRequest.hpp"
 #include "CommandHandler.hpp"
 #include "AdminSystem.hpp"
+#include "util/Random.hpp"
 
 struct Player {
     int id;
@@ -62,11 +63,15 @@ public:
     int findClientByUsername(std::string& uname);
     
     void sendMsgToPlayer(int clientId, std::string msg);
-    void sendPacketToAll(Packet& p);
+    void sendPacketToAll(Packet p);
+    std::string getSalt();
+    void toggleSolid();
+    bool getSolid();
 
 private:
     void serverThreadMain();
     void levelSaveThread();
+    void serverInputThread();
     void tickLoopOnce();
     void initLevel();
     void saveLevel();
@@ -90,6 +95,10 @@ private:
     std::thread serverThread;
     std::thread heartbeatThread;
     std::thread levelThread;
+    std::thread inputThread;
+    bool solid = false;
+
+    std::string salt = "";
 
     std::vector<std::shared_ptr<Player>> players;
 };

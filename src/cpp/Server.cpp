@@ -1,6 +1,7 @@
 #include "Server.hpp"
 #include "Logger.hpp"
 #include "level/LevelGen.hpp"
+#include "level/tile/Tile.hpp"
 #include "level/LevelLoaderListener.hpp"
 #include "net/Protocol.hpp"
 
@@ -105,6 +106,11 @@ Server::Server(std::shared_ptr<Config> cfg) : config(cfg) {
     level = std::make_unique<Level>();
     level->server = this;
 
+    Random* random = new Random();
+
+    salt = std::to_string(random->nextInt());
+
+    delete random;
     players.resize(128); 
 }
 
@@ -136,7 +142,8 @@ bool Server::start() {
     serverThread = std::thread(&Server::serverThreadMain, this);
     heartbeatThread = std::thread(&Heartbeat::heartbeatThreadMain, heartbeat);
     levelThread = std::thread(&Server::levelSaveThread, this);
-    
+    inputThread = std::thread(&Server::serverInputThread, this);
+
     return true;
 }
 
@@ -160,9 +167,15 @@ void Server::stop() {
     if (levelThread.joinable()) {
         levelThread.join();
     }
+
+    if (inputThread.joinable()) {
+        inputThread.join();
+    }
     
     saveLevel();
     Logger::log(PREFIX_CC, "Server stopped.\n");
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
 }
 
 void Server::serverThreadMain() {
@@ -176,6 +189,38 @@ void Server::serverThreadMain() {
         tickLoopOnce();
 
         // 3. Sleep to save CPU
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+}
+
+void Server::serverInputThread() {
+    Logger::log(PREFIX_CC, "Server input running.\n");
+
+    std::string msg = "";
+
+    while (running.load()) {
+        std::getline(std::cin, msg);
+        auto start = msg.find_first_not_of(" \t");
+        auto end   = msg.find_last_not_of(" \t");
+        if (start == std::string::npos || msg.empty()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+            continue;
+        }
+        msg = msg.substr(start, end - start + 1);
+        if (msg == "stop") {
+            this->saveLevel();
+            this->stop();
+            return;
+        }
+        bool fail = this->commands->executeCommand(msg, 0, true);
+        if (!fail) {
+            Logger::logf(PREFIX_ERROR, "Unknown command %s\n", msg);
+        } else {
+            if (commands->getReturnText() != "") {
+                Logger::logf(PREFIX_CC, "%s", this->commands->getReturnText().c_str());
+            }
+        }
+
         std::this_thread::sleep_for(std::chrono::milliseconds(2));
     }
 }
@@ -451,7 +496,15 @@ void Server::handleBlockChange(int clientId, Packet& packet) {
     // Logger::logf(PREFIX_DEBUG, "Mode: %i, type: %i", mode, type);
 
     uint8_t finalType = (mode == 1) ? type : 0;
+
+    if (this->adminSystem->isAdmin(clientId) && this->solid && finalType == Tile::rock->id) {
+        finalType = Tile::unbreakable->id;
+    }
     
+    if (level->getTile(x, y, z) == Tile::unbreakable->id && !this->adminSystem->isAdmin(clientId)) {
+        return;
+    }
+
     level->setTile(x, y, z, finalType);
     
 }
@@ -694,10 +747,22 @@ int Server::findClientByUsername(std::string& username) {
     return id;
 }
 
-void Server::sendPacketToAll(Packet& p) {
+void Server::sendPacketToAll(Packet p) {
     for (auto& other : players) {
         if (other && other->loggedIn && other->id ) {
             network->sendPacket(other->id, p);
         }
     }
+}
+
+std::string Server::getSalt() {
+    return this->salt;
+}
+
+void Server::toggleSolid() {
+    this->solid = !this->solid;
+}
+
+bool Server::getSolid() {
+    return this->solid;
 }

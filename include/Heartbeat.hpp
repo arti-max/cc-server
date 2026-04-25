@@ -16,6 +16,7 @@ class Heartbeat {
 private:
     std::string serverUrl = "https://crosscraftweb.ddns.net/heartbeat.jsp";
     Server* server;
+    std::string lastUrl;
 
 public:
     Heartbeat(Server* server);

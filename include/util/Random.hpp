@@ -45,4 +45,9 @@ public:
         static Random staticRandom;
         return staticRandom.nextFloat();
     }
+
+    static Random& getInstance() {
+        static Random instance;
+        return instance;
+    }
 };

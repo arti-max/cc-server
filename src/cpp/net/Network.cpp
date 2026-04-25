@@ -17,7 +17,7 @@
 Network::Network(int port, INetworkHandler* handler) 
     : port(port), handler(handler), listenSocket(INVALID_SOCKET), running(false) 
 {
-    // Резервируем слоты под 128 игроков (как договаривались)
+    // Резервируем слоты под 128 игроков
     sessions.resize(128); 
 }
 

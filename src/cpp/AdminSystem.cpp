@@ -75,7 +75,7 @@ void AdminSystem::saveConfigs() {
             ofile << admin << '\n';
         }
         ofile.close();
-        Logger::logf(PREFIX_CC, "Saved %s\n", adminTxt.c_str());
+        // Logger::logf(PREFIX_CC, "Saved %s\n", adminTxt.c_str());
     } else {
         Logger::logf(PREFIX_ERROR, "Failed to save %s\n", adminTxt.c_str());
     }
@@ -87,7 +87,7 @@ void AdminSystem::saveConfigs() {
             ofile2 << banned << '\n';
         }
         ofile2.close();
-        Logger::logf(PREFIX_CC, "Saved %s\n", bansTxt.c_str());
+        // Logger::logf(PREFIX_CC, "Saved %s\n", bansTxt.c_str());
     } else {
         Logger::logf(PREFIX_ERROR, "Failed to save %s\n", bansTxt.c_str());
     }
@@ -99,7 +99,7 @@ void AdminSystem::saveConfigs() {
             ofile3 << bannedip << '\n';
         }
         ofile3.close();
-        Logger::logf(PREFIX_CC, "Saved %s\n", banIpsTxt.c_str());
+        // Logger::logf(PREFIX_CC, "Saved %s\n", banIpsTxt.c_str());
     } else {
         Logger::logf(PREFIX_ERROR, "Failed to save %s\n", banIpsTxt.c_str());
     }
