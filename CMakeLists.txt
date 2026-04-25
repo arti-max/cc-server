@@ -60,6 +60,6 @@ add_custom_command(TARGET CrossCraftServer POST_BUILD
 if(WIN32)
     file(WRITE "${CMAKE_BINARY_DIR}/bin/Release/start_server.bat" "start CrossCraftServer.exe\n")
 else()
-    file(WRITE "${CMAKE_BINARY_DIR}/bin/Release/start_server.sh" "#!/bin/sh\n./CrossCraftServer\n")
+    file(WRITE "${CMAKE_BINARY_DIR}/bin/start_server.sh" "#!/bin/sh\n./CrossCraftServer\n")
     execute_process(COMMAND chmod +x "${CMAKE_BINARY_DIR}/bin/start_server.sh")
 endif()

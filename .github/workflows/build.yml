@@ -26,9 +26,9 @@ jobs:
     - name: Build
       run: cmake --build ${{ github.workspace }}/build
 
-    - name: Upload server binary
-      uses: actions/upload-artifact@v4
-      with:
-        name: CrossCraftServer-${{ matrix.os }}
-        path: |
-          ${{ github.workspace }}/build/bin/CrossCraftServer*
+    - name: Upload server binary and scripts
+    uses: actions/upload-artifact@v4
+    with:
+      name: CrossCraftServer-${{ matrix.os }}
+      path: |
+        ${{ github.workspace }}/build/bin/*
