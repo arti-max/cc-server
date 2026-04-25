@@ -28,10 +28,10 @@ find_package(CURL REQUIRED)
 # Папки заголовков
 include_directories(include)
 
-# Собираем исходники (Рекурсивно, чтобы захватить net/, level/ и т.д.)
+# Собираем исходники (рекурсивно, чтобы захватить net/, level/ и т.д.)
 file(GLOB_RECURSE SOURCES 
     "src/cpp/*.cpp"
-    "src/cpp/*.c"
+    "src/cpp/*.c"     # Для miniz.c, если решишь его добавить
 )
 
 add_executable(CrossCraftServer ${SOURCES})
@@ -53,23 +53,13 @@ set_target_properties(CrossCraftServer PROPERTIES
 add_custom_command(TARGET CrossCraftServer POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_SOURCE_DIR}/README.TXT"
-        "${CMAKE_BINARY_DIR}/bin/README.TXT"
+        "${CMAKE_BINARY_DIR}/bin/Release/README.TXT"
     COMMENT "Copying README.TXT to output directory"
 )
 
 if(WIN32)
-    # start server.bat for Windows
-    add_custom_command(TARGET CrossCraftServer POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E echo "start CrossCraftServer.exe" >
-            "${CMAKE_BINARY_DIR}/bin/start server.bat"
-        COMMENT "Creating start server.bat"
-    )
+    file(WRITE "${CMAKE_BINARY_DIR}/bin/Release/start_server.bat" "start CrossCraftServer.exe\n")
 else()
-    # start server.sh for Linux/macOS
-    add_custom_command(TARGET CrossCraftServer POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E echo "#!/bin/sh\n./CrossCraftServer" >
-            "${CMAKE_BINARY_DIR}/bin/start server.sh"
-        COMMAND chmod +x "${CMAKE_BINARY_DIR}/bin/start server.sh"
-        COMMENT "Creating start server.sh"
-    )
+    file(WRITE "${CMAKE_BINARY_DIR}/bin/Release/start_server.sh" "#!/bin/sh\n./CrossCraftServer\n")
+    execute_process(COMMAND chmod +x "${CMAKE_BINARY_DIR}/bin/start_server.sh")
 endif()
