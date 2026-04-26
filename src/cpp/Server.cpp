@@ -182,14 +182,20 @@ void Server::serverThreadMain() {
     Logger::log(PREFIX_CC, "Server loop running.\n");
 
     while (running.load()) {
-        // 1. Network Processing
-        if (network) network->poll();
+        try {
+            // 1. Network Processing
+            if (network) network->poll();
 
-        // 2. Game Tick
-        tickLoopOnce();
+            // 2. Game Tick
+            tickLoopOnce();
 
-        // 3. Sleep to save CPU
-        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+            // 3. Sleep to save CPU
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        } catch (const std::exception& e) {
+            Logger::logf(PREFIX_ERROR, "Exception in server loop: %s\n", e.what());
+        } catch (...) {
+            Logger::log(PREFIX_ERROR, "Unknown exception in server loop.\n");
+        }
     }
 }
 
@@ -212,13 +218,17 @@ void Server::serverInputThread() {
             this->stop();
             return;
         }
-        bool fail = this->commands->executeCommand(msg, 0, true);
-        if (!fail) {
-            Logger::logf(PREFIX_ERROR, "Unknown command %s\n", msg);
-        } else {
-            if (commands->getReturnText() != "") {
-                Logger::logf(PREFIX_CC, "%s", this->commands->getReturnText().c_str());
+        try {
+            bool fail = this->commands->executeCommand(msg, 0, true);
+            if (!fail) {
+                Logger::logf(PREFIX_ERROR, "Unknown command %s\n", msg);
+            } else {
+                if (commands->getReturnText() != "") {
+                    Logger::logf(PREFIX_CC, "%s", this->commands->getReturnText().c_str());
+                }
             }
+        } catch (const std::exception& e) {
+            Logger::logf(PREFIX_ERROR, "Command error: %s\n", e.what());
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(2));
@@ -336,34 +346,41 @@ void Server::onDisconnect(int clientId) {
 
 void Server::onPacket(int clientId, Packet& packet) {
     Protocol::Opcode type = packet.getType();
-    
+    try {
     // Logger::logf(PREFIX_DEBUG, "RX Packet: 0x%02X\n", (uint8_t)type);
 
-    switch (type) {
-        case Protocol::Opcode::LOGIN:
-            handleLogin(clientId, packet);
-            break;
-        case Protocol::Opcode::BLOCK_CHANGE:
-            // Logger::log(PREFIX_CC, "Block Change Packet received!\n"); // LOG
-            handleBlockChange(clientId, packet);
-            break;
-        case Protocol::Opcode::CLIENT_CHAT_MESSAGE:
-            // Logger::log(PREFIX_CC, "Chat Packet received!\n"); // LOG
-            handleChat(clientId, packet);
-            break;
-        case Protocol::Opcode::POSITION_UPDATE: 
-        case Protocol::Opcode::PLAYER_POSITION:
-            handlePosition(clientId, packet);
-            break;
-        case Protocol::Opcode::REQUEST_SPAWN_POSITION:
-            handleRequestSpawn(clientId);
-            break;
-        case Protocol::Opcode::REQUEST_LEVEL_DATA:
-            handleRequestLevel(clientId);
-            break;
-        default:
-            Logger::logf(PREFIX_WARNING, "Unhandled packet 0x%02X\n", (uint8_t)type);
-            break;
+        switch (type) {
+            case Protocol::Opcode::LOGIN:
+                handleLogin(clientId, packet);
+                break;
+            case Protocol::Opcode::BLOCK_CHANGE:
+                // Logger::log(PREFIX_CC, "Block Change Packet received!\n"); // LOG
+                handleBlockChange(clientId, packet);
+                break;
+            case Protocol::Opcode::CLIENT_CHAT_MESSAGE:
+                // Logger::log(PREFIX_CC, "Chat Packet received!\n"); // LOG
+                handleChat(clientId, packet);
+                break;
+            case Protocol::Opcode::POSITION_UPDATE: 
+            case Protocol::Opcode::PLAYER_POSITION:
+                handlePosition(clientId, packet);
+                break;
+            case Protocol::Opcode::REQUEST_SPAWN_POSITION:
+                handleRequestSpawn(clientId);
+                break;
+            case Protocol::Opcode::REQUEST_LEVEL_DATA:
+                handleRequestLevel(clientId);
+                break;
+            default:
+                Logger::logf(PREFIX_WARNING, "Unhandled packet 0x%02X\n", (uint8_t)type);
+                break;
+        }
+    } catch (const std::exception& e) {
+        Logger::logf(PREFIX_ERROR, "Exception handling packet 0x%02X from client %d: %s\n",
+                     (uint8_t)type, clientId, e.what());
+    } catch (...) {
+        Logger::logf(PREFIX_ERROR, "Unknown exception handling packet 0x%02X from client %d\n",
+                     (uint8_t)type, clientId);
     }
 }
 

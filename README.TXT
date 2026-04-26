@@ -75,6 +75,10 @@ Most commands can also be typed directly into the server console (stdin).
 
 ## Changelog:
 
+Version 1.6.2
+
++ Added try-catch in threads
+
 Version 1.6.1
 
 + /say command fixed
