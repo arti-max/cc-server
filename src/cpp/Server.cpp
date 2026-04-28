@@ -239,7 +239,13 @@ void Server::levelSaveThread() {
     Logger::logf(PREFIX_CC, "Level save thread started.\n");
 
     while(running.load()) {
-        this->saveLevel();
+        try {
+            this->saveLevel();
+        } catch (const std::exception& e) {
+            Logger::logf(PREFIX_ERROR, "Level save error: %s\n", e.what());
+        } catch (...) {
+            Logger::log(PREFIX_ERROR, "Unknown level save error.\n");
+        }
         std::this_thread::sleep_for(std::chrono::seconds(120));
     }
 }

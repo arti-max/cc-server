@@ -1,10 +1,15 @@
 #include <iostream>
 #include <string>
+#include <csignal>
 #include "Server.hpp"
 #include "Config.hpp"
 #include "Logger.hpp"
 
 int main(int argc, char** argv) {
+#ifndef _WIN32
+    signal(SIGPIPE, SIG_IGN);
+#endif
+
     auto config = std::make_shared<Config>();
     config->load("server.properties");
 

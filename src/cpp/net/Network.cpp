@@ -370,38 +370,36 @@ void Network::sendPacket(int clientId, const Packet& packet) {
 }
 
 void Network::disconnectClient(int clientId, const std::string& reason, uint16_t code) {
-    std::lock_guard<std::mutex> lock(sessionsMutex);
-    if (clientId < 0 || clientId >= 128 || !sessions[clientId] || !sessions[clientId]->active) return;
-
-
-    if (sessions[clientId]->state == SessionState::CONNECTED) {
-        createCloseFrame(sessions[clientId]->socket, reason, code);
+    sessionsMutex.lock();
+    if (clientId < 0 || clientId >= 128 || !sessions[clientId] || !sessions[clientId]->active) {
+        sessionsMutex.unlock();
+        return;
     }
 
-    // Logger::logf(PREFIX_NETWORK, "Client %d disconnected: %s", clientId, reason.c_str());
-    
-    if (handler) handler->onDisconnect(clientId);
+    bool shouldNotify = (sessions[clientId]->state == SessionState::CONNECTED);
+    SocketType sock = sessions[clientId]->socket;
+
+    if (shouldNotify) {
+        createCloseFrame(sock, reason, code);
+    }
 
     std::string ip = sessions[clientId]->ip;
-    auto it = ipConnectionCount.find(ip);
-    if (it != ipConnectionCount.end()) {
-        it->second--;
-        if (it->second == 0) {
-            ipConnectionCount.erase(it);
-        }
-    }
-    
-    // Закрываем сокет
-#ifdef _WIN32
-    closesocket(sessions[clientId]->socket);
-#else
-    close(sessions[clientId]->socket);
-#endif
+    INetworkHandler* notifyHandler = handler;
 
+    ipConnectionCount[ip]--;
+    if (ipConnectionCount[ip] <= 0) {
+        ipConnectionCount.erase(ip);
+    }
     sessions[clientId]->active = false;
     sessions[clientId]->recvBuffer.clear();
-}
 
+    sessionsMutex.unlock();
+
+    closeSocket(sock);
+    if (notifyHandler) {
+        notifyHandler->onDisconnect(clientId);
+    }
+}
 
 void Network::createCloseFrame(SocketType sock, const std::string& reason, uint16_t code) {
     std::vector<uint8_t> frame;

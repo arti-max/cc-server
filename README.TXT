@@ -75,6 +75,11 @@ Most commands can also be typed directly into the server console (stdin).
 
 ## Changelog:
 
+Version 1.6.3
+
++ Fix mutex in Network.cpp
++ Added ignore SIGPIPE on Unix
+
 Version 1.6.2
 
 + Added try-catch in threads
