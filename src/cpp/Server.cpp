@@ -188,6 +188,12 @@ void Server::serverThreadMain() {
             long long remaining = timer->msUntilNextTick();
             if (remaining < 0) remaining = 0;
 
+            bool work = level->hasWork();
+            if (work) {
+                static int cnt = 0;
+                if (++cnt % 50 == 0) Logger::logf(PREFIX_CC, "hasWork=true, remaining=%lld\n", remaining);
+            }
+
             if (network) network->wait(static_cast<int>(remaining));
             // std::this_thread::sleep_for(std::chrono::milliseconds(remaining));
         } catch (const std::exception& e) {
@@ -251,11 +257,14 @@ void Server::levelSaveThread() {
 
 void Server::tickLoopOnce() {
     timer->advanceTime();
-    
+
     if (level->hasWork()) {
         for (int i = 0; i < timer->ticks; ++i) {
             level->tick();
         }
+    } else {
+        timer->ticks = 0;
+        timer->passedTime = 0.0f;
     }
 }
 
