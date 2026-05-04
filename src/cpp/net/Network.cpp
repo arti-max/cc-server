@@ -117,45 +117,70 @@ void Network::wait(int timeoutMs) {
     if (!running) return;
 
     fd_set readfds;
-    FD_ZERO(&readfds);
-
-    FD_SET(listenSocket, &readfds);
-    SocketType maxfd = listenSocket;
-
     std::vector<ClientSession*> activeSessions;
-    {
-        std::lock_guard<std::mutex> lock(sessionsMutex);
-        for (auto& s : sessions) {
-            if (s && s->active) {
-                activeSessions.push_back(s.get());
-                FD_SET(s->socket, &readfds);
-                if (s->socket > maxfd) maxfd = s->socket;
+
+    // Запоминаем время начала, чтобы корректно пересчитывать таймаут при перезапуске
+    auto start = std::chrono::steady_clock::now();
+
+    while (true) {
+        FD_ZERO(&readfds);
+        FD_SET(listenSocket, &readfds);
+        SocketType maxfd = listenSocket;
+
+        {
+            std::lock_guard<std::mutex> lock(sessionsMutex);
+            activeSessions.clear();
+            for (auto& s : sessions) {
+                if (s && s->active) {
+                    activeSessions.push_back(s.get());
+                    FD_SET(s->socket, &readfds);
+                    if (s->socket > maxfd) maxfd = s->socket;
+                }
             }
         }
-    }
 
-    struct timeval tv;
-    tv.tv_sec = timeoutMs / 1000;
-    tv.tv_usec = (timeoutMs % 1000) * 1000;
+        // Вычисляем оставшийся таймаут
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                           std::chrono::steady_clock::now() - start)
+                           .count();
+        long long remaining = timeoutMs - elapsed;
+        if (remaining < 0) remaining = 0;
 
-    int result = select(maxfd + 1, &readfds, nullptr, nullptr, &tv);
+        struct timeval tv;
+        tv.tv_sec = remaining / 1000;
+        tv.tv_usec = (remaining % 1000) * 1000;
 
-    if (result < 0) {
-        if (errno == EINTR) return;
-        Logger::log(PREFIX_ERROR, "select() failed\n");
+        int result = select(maxfd + 1, &readfds, nullptr, nullptr, &tv);
+
+        if (result < 0) {
+            if (errno == EINTR) {
+                // select прерван сигналом – просто пересчитываем таймаут и пробуем снова
+                continue;
+            }
+            Logger::log(PREFIX_ERROR, "select() failed\n");
+            return;
+        }
+
+        // Обработка событий
+        if (result == 0) {
+            // Таймаут – выходим
+            return;
+        }
+
+        if (FD_ISSET(listenSocket, &readfds)) {
+            handleNewConnections();
+        }
+
+        for (auto* session : activeSessions) {
+            if (FD_ISSET(session->socket, &readfds)) {
+                if (session->active) {
+                    handleClientData(*session);
+                }
+            }
+        }
+
+        // События обработаны – выходим
         return;
-    }
-
-    if (FD_ISSET(listenSocket, &readfds)) {
-        handleNewConnections();
-    }
-
-    for (auto* session : activeSessions) {
-        if (FD_ISSET(session->socket, &readfds)) {
-            if (session->active) {
-                handleClientData(*session);
-            }
-        }
     }
 }
 
