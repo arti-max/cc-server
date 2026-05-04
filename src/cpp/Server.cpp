@@ -189,7 +189,7 @@ void Server::serverThreadMain() {
             if (remaining < 0) remaining = 0;
 
             if (network) network->wait(static_cast<int>(remaining));
-            std::this_thread::sleep_for(std::chrono::milliseconds(remaining));
+            // std::this_thread::sleep_for(std::chrono::milliseconds(remaining));
         } catch (const std::exception& e) {
             Logger::logf(PREFIX_ERROR, "Exception in server loop: %s\n", e.what());
         } catch (...) {
