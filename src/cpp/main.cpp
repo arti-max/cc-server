@@ -25,13 +25,13 @@ int main(int argc, char** argv) {
 
     std::cout << "Input 'stop' to stop...\n";
     while(server.running.load()) {
-        // paass
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
     // std::cout << "Press Enter to stop...\n";
     // std::cin.get();
 
-    // server.stop();
+    server.stop();
     return 0;
 }
 
