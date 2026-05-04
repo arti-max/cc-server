@@ -113,6 +113,52 @@ void Network::stop() {
     closeSocketSystem();
 }
 
+void Network::wait(int timeoutMs) {
+    if (!running) return;
+
+    fd_set readfds;
+    FD_ZERO(&readfds);
+
+    FD_SET(listenSocket, &readfds);
+    SocketType maxfd = listenSocket;
+
+    std::vector<ClientSession*> activeSessions;
+    {
+        std::lock_guard<std::mutex> lock(sessionsMutex);
+        for (auto& s : sessions) {
+            if (s && s->active) {
+                activeSessions.push_back(s.get());
+                FD_SET(s->socket, &readfds);
+                if (s->socket > maxfd) maxfd = s->socket;
+            }
+        }
+    }
+
+    struct timeval tv;
+    tv.tv_sec = timeoutMs / 1000;
+    tv.tv_usec = (timeoutMs % 1000) * 1000;
+
+    int result = select(maxfd + 1, &readfds, nullptr, nullptr, &tv);
+
+    if (result < 0) {
+        if (errno == EINTR) return;
+        Logger::log(PREFIX_ERROR, "select() failed\n");
+        return;
+    }
+
+    if (FD_ISSET(listenSocket, &readfds)) {
+        handleNewConnections();
+    }
+
+    for (auto* session : activeSessions) {
+        if (FD_ISSET(session->socket, &readfds)) {
+            if (session->active) {
+                handleClientData(*session);
+            }
+        }
+    }
+}
+
 void Network::poll() {
     if (!running) return;
 

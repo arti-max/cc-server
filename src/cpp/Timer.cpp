@@ -45,3 +45,12 @@ long long Timer::getCurrentTimeNanos() {
     auto duration = now.time_since_epoch();
     return std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count();
 }
+
+long long Timer::msUntilNextTick() const {
+    auto now = std::chrono::high_resolution_clock::now();
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastTime).count();
+    long long interval = static_cast<long long>(1000.0f / ticksPerSecond);
+    long long remaining = interval - elapsed;
+    if (remaining < 1) remaining = 1;
+    return remaining;
+}

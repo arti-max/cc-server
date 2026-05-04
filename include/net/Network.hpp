@@ -7,12 +7,17 @@
 #include "Packet.hpp"
 #include "Config.hpp"
 
+#ifndef _WIN32
+#define FD_SETSIZE 256
+#endif
+
 // Кроссплатформенные сокеты
 #ifdef _WIN32
     #include <winsock2.h>
     #include <ws2tcpip.h>
     typedef SOCKET SocketType;
 #else
+    #include <sys/select.h>
     #include <sys/socket.h>
     #include <netinet/in.h>
     #include <unistd.h>
@@ -55,7 +60,7 @@ public:
 
     std::shared_ptr<Config> cfg;
     
-    // Вызывать в каждом тике сервера (обрабатывает входящие данные)
+    void wait(int timeoutMs);
     void poll(); 
 
     void sendPacket(int clientId, const Packet& packet);

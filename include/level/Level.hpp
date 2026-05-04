@@ -17,6 +17,7 @@ struct TickEntry {
 class Level {
 private:
     static const int TILE_UPDATE_INTERVAL = 200;
+    static const int MAX_RANDOM_TICKS_PER_FRAME = 1000;
     static const int multiplier = 1664525;
     static const int addend = 1013904223;
     
@@ -46,6 +47,9 @@ public:
     std::string name;
     std::string creator;
     long long creationTime = 0;
+
+    bool enableRandomTicks = true;
+
 
     Server* server = nullptr;
 
@@ -88,6 +92,9 @@ public:
     void addBanned(int x, int y, int z, int id);
     void removeBanned(int x, int y, int z, int id);
     bool isBanned(int x, int y, int z);
+    bool hasWork() const {
+        return !tickNextTickList.empty();
+    }
 
 private:
     void generateMap();

@@ -75,6 +75,10 @@ Most commands can also be typed directly into the server console (stdin).
 
 ## Changelog:
 
+Version 1.6.4
+
++ Significantly reduced idle CPU usage by optimizing the server loop and network polling
+
 Version 1.6.3
 
 + Fix mutex in Network.cpp

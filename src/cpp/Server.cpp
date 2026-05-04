@@ -183,14 +183,13 @@ void Server::serverThreadMain() {
 
     while (running.load()) {
         try {
-            // 1. Network Processing
-            if (network) network->poll();
-
-            // 2. Game Tick
             tickLoopOnce();
 
-            // 3. Sleep to save CPU
-            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+            long long remaining = timer->msUntilNextTick();
+            if (remaining < 0) remaining = 0;
+
+            if (network) network->wait(static_cast<int>(remaining));
+            std::this_thread::sleep_for(std::chrono::milliseconds(remaining));
         } catch (const std::exception& e) {
             Logger::logf(PREFIX_ERROR, "Exception in server loop: %s\n", e.what());
         } catch (...) {
@@ -251,10 +250,11 @@ void Server::levelSaveThread() {
 }
 
 void Server::tickLoopOnce() {
-    timer->advanceTime();
-
-    for (int i = 0; i < timer->ticks; ++i) {
-        level->tick();
+    if (level->hasWork()) {
+        timer->advanceTime();
+        for (int i = 0; i < timer->ticks; ++i) {
+            level->tick();
+        }
     }
 }
 

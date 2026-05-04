@@ -115,6 +115,10 @@ bool CommandHandler::executeCommand(std::string& text, int clientId, bool consol
         if (!console) {
             this->privateText = true;
             int otherId = server->findClientByUsername(parts[1]);
+            if (otherId == -1) {
+                returnText = format("Unknown player %s", parts[1]);
+                return true;
+            }
             auto [px, py, pz] = server->getClientPos(clientId);
             auto [ox, oy, oz] = server->getClientPos(otherId);
             auto [pyaw, ppitch] = server->getClientRot(clientId);

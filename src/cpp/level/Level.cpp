@@ -121,21 +121,26 @@ void Level::tick() {
         }
     }
 
+    if (enableRandomTicks) {
+        unprocessed += width * height * depth;
+        int ticks = unprocessed / TILE_UPDATE_INTERVAL;
+        unprocessed -= ticks * TILE_UPDATE_INTERVAL;
 
-    unprocessed += width * height * depth;
-    int ticks = unprocessed / TILE_UPDATE_INTERVAL;
-    unprocessed -= ticks * TILE_UPDATE_INTERVAL;
-    
-    for (int i = 0; i < ticks; ++i) {
-        int x = random->nextInt(width);
-        int y = random->nextInt(depth);
-        int z = random->nextInt(height);
+        if (ticks > MAX_RANDOM_TICKS_PER_FRAME) {
+            ticks = MAX_RANDOM_TICKS_PER_FRAME;
+        }
         
-        int id = getTile(x, y, z);
-        if (id != 0) {
-            Tile* tile = Tile::tiles[id];
-            if (tile) {
-                tile->tick(this, x, y, z, random);
+        for (int i = 0; i < ticks; ++i) {
+            int x = random->nextInt(width);
+            int y = random->nextInt(depth);
+            int z = random->nextInt(height);
+            
+            int id = getTile(x, y, z);
+            if (id != 0) {
+                Tile* tile = Tile::tiles[id];
+                if (tile) {
+                    tile->tick(this, x, y, z, random);
+                }
             }
         }
     }
