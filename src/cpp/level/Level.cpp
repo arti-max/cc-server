@@ -125,10 +125,6 @@ void Level::tick() {
         unprocessed += width * height * depth;
         int ticks = unprocessed / TILE_UPDATE_INTERVAL;
         unprocessed -= ticks * TILE_UPDATE_INTERVAL;
-
-        if (ticks > MAX_RANDOM_TICKS_PER_FRAME) {
-            ticks = MAX_RANDOM_TICKS_PER_FRAME;
-        }
         
         for (int i = 0; i < ticks; ++i) {
             int x = random->nextInt(width);
