@@ -250,8 +250,9 @@ void Server::levelSaveThread() {
 }
 
 void Server::tickLoopOnce() {
+    timer->advanceTime();
+    
     if (level->hasWork()) {
-        timer->advanceTime();
         for (int i = 0; i < timer->ticks; ++i) {
             level->tick();
         }
